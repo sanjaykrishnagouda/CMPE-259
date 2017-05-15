@@ -2,7 +2,7 @@
 File:       ts.cpp
 Purpose:    Tabu Search algorithm
 Author:     Naishil Shah
-			Sanjay Krishna Gouda
+	    Sanjay Krishna Gouda
 
 -------------------
 Tabu Search
