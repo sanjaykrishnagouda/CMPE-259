@@ -1,0 +1,1 @@
+grd.o: grd.cpp srtm.h cvis_wang.h bmp.h visibility.h

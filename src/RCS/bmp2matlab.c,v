@@ -1,0 +1,66 @@
+head	1.1;
+access;
+symbols
+	ver1_2:1.1
+	ver1_12:1.1
+	ver1_11:1.1
+	ver1_1:1.1
+	ver1_03:1.1
+	ver1_02:1.1
+	v1_01:1.1
+	v1_0:1.1
+	beta1:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.1
+date	2011.08.05.17.04.41;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@convert BMP file into a MATLAB matrix
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#include <stdio.h>
+#include <stdlib.h>
+
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "msg.h"
+#include "bmp.h"
+
+
+int main(int argc, char **argv)
+{
+    BMP_BITMAP bmp;
+
+    if (argc != 6                  ||
+        strcmp(argv[2], "-m") != 0 ||
+        strcmp(argv[4], "-o") != 0)
+    {
+        printf("Usage: bmp2matlab infile -m matrix -o outfile\n");
+        exit(1);
+    }
+    else
+    {
+        const char *infile  = argv[1];
+        const char *matrix  = argv[3];
+        const char *outfile = argv[5];
+
+        bmp_bitmap_read(&bmp, infile);
+        bmp_bitmap_write_matlab_matrix(&bmp, outfile, matrix);
+    }
+
+    return 0;
+}
+
+@

@@ -1,0 +1,1 @@
+ucsclim.o: ucsclim.cpp data.h

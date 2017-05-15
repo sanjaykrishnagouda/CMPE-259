@@ -1,0 +1,312 @@
+/******************************************************************************
+
+File:       pg.cpp
+Purpose:    Potential Games Algorithms
+Author:     Kerry Veenstra
+
+---------------
+Potential Games
+---------------
+
+We use a Potential Games algorithm called Restrictive Spatial Adaptive Play
+[Ref 1].  The key idea of the algorithm is to improve a system's state by
+selecting the next state from a set of alternatives where the probability
+of each alternative is determined by its utility.
+
+In any Potential Game, the system's global utility function is determined
+only by the system's current state.  That is, the system's global utility
+is unaffected by the system's prior states.  In addition, each agent of the
+system has a local utility function whose definition is such that any
+change this local utility fuction due to an agent's action predicts the
+corresponding change in the system's global utility function.  Hence, any
+agent can know how its unilateral action will affect the global utility
+function without needing to compute the global utility function itself.
+
+In Restrictive Spatial Adaptive Play, alternative actions are chosen based
+on their utilities.  However, rather than always choosing the alternative
+with the greatest utility, the algorithm randomly chooses actions based on
+computed probabilities.  The probabilities are determined by the relative
+values of exp(beta * utility_i) for each alternative action i, where beta is
+controls the likelihood of a backtracking move.
+
+The local utility is measured using the "Wonderful Life Utility" or WLU.
+WLU is influence that an agent has on the global utility compared to the
+agent's complete absence. (The name of the utility comes from the 1946
+movie "It's a Wonderful Life" in which Jimmy Stewart's character is shown
+what life in his home town would have been like had he never been born.)
+
+
+
+----------
+References
+----------
+
+[Ref 1] Marden, Jason R. and Arslan, Gurdal and Shamma, Jeff S.
+        "Cooperative Control and Potential Games," IEEE Transactions
+        on Systems, Man, and Cybernetics--Part B: Cybernetics.  Vol. 39.
+        No. 6, December 2009.  pp. 1393-1407.
+
+[Ref 2] Young, H. Peyton. Individual Strategy and Social Structure: an
+        Evolutionary Theory of Institutions.  Princeton University Press.
+        1998.  Chapter 6.
+
+******************************************************************************/
+
+#include <cassert>
+//#include <limits>
+#include <vector>
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+extern "C"
+{
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "bmp.h"
+#include "visibility.h"
+}
+
+#include "ge.h"
+#include "Disk.h"
+#include "State.h"
+#include "Statistics.h"
+#include "Temperature.h"
+#include "pg.h"
+
+
+using std::vector;
+
+
+class pg_Alternative
+{
+    public:
+        pg_Alternative(int i, int j, int utility);
+        int     i;
+        int     j;
+        int     utility;
+        double  exp_beta_utility(double beta) {return exp(beta * utility);}
+};
+
+
+pg_Alternative::pg_Alternative(int i, int j, int utility)
+{
+    this->i         = i;
+    this->j         = j;
+    this->utility   = utility;
+}
+
+
+class pg_Viewpoint
+{
+    public:
+        pg_Viewpoint() {};
+        void    new_location(State S, int k, int visibility_radius_max,
+                             int viewpoint_height_above_terrain,
+                             int dist_max, double beta);
+        int     i() {return _i;}
+        int     j() {return _j;}
+    private:
+        int     _i;
+        int     _j;
+};
+
+
+//  Compute a new location for viewpoint k of State S.
+void pg_Viewpoint::new_location
+(
+    State   S,
+    int     k,
+    int     visibility_radius_max,
+    int     viewpoint_height_above_terrain,
+    int     dist_max,
+    double  beta
+)
+{
+    assert(0 <= k && k < S.num_viewpoints);
+    assert(dist_max >= 0);
+    assert(beta >= 0.0);
+
+    printf("new_location()\n");
+    printf("  k = %d\n", k);
+
+    // Determine the WLU of all possible alternatives for agent k.
+    // The WLU is the agent's effect on the global utility.
+    // Compute it by subtracting the utility of the state without agent k.
+
+    // Get the utility of the state S without agent k.
+    State S_without_agent_k = S;
+
+    S_without_agent_k.delete_viewpoint(k);
+
+    cvis_wang_malloc(&v, &z, srtm,
+                     S_without_agent_k.num_viewpoints,
+                     S_without_agent_k.pi, S_without_agent_k.pj,
+                     S_without_agent_k.pcommunicating,
+                     visibility_radius_max,
+                     viewpoint_height_above_terrain);
+
+    int utility_without_agent_k = cvis_wang_count(&v);
+
+    printf("  utility_without_agent_k = %d\n", utility_without_agent_k);
+
+    // Record the WLU of all alternative states for agent k.
+    vector<pg_Alternative> alternative;
+
+    int i_start = S.pi[k] - dist_max;
+    int i_end   = S.pi[k] + dist_max;
+    int j_start = S.pj[k] - dist_max;
+    int j_end   = S.pj[k] + dist_max;
+
+    // Consider only the alternatives that are in-bounds.
+    if (i_start < v->i_min) i_start = v->i_min;
+    if (i_end   > v->i_max) i_end   = v->i_max;
+    if (j_start < v->j_min) j_start = v->j_min;
+    if (j_end   > v->j_max) j_end   = v->j_max;
+
+    for (int j = j_start; j <= j_end; ++j)
+    {
+        for (int i = i_start; i <= i_end; ++i)
+        {
+            // try alternative
+            S.pi[k] = i;
+            S.pj[k] = j;
+
+            // Get WLU
+            cvis_wang_malloc(&v, &z, srtm,
+                             S.num_viewpoints,
+                             S.pi, S.pj, S.pcommunicating,
+                             visibility_radius_max,
+                             viewpoint_height_above_terrain);
+
+            int wlu = cvis_wang_count(&v) - utility_without_agent_k;
+            alternative.push_back(pg_Alternative(i, j, wlu));
+
+            printf("  i = %d, j = %d, wlu = %d\n", i, j, wlu);
+        }
+    }
+
+    // Compute the relative probabilities of each alternative for agent k.
+    double total = 0.0;
+
+    for (auto a : alternative)
+    {
+        total += a.exp_beta_utility(beta);
+    }
+
+    printf("  total = %f\n", total);
+
+    // Choose a random alternative for agent k.
+    double  threshold   = ge_rand_uniform_double(0.0, total);
+    total = 0.0;
+
+    printf("  threshold = %f\n", threshold);
+
+    for (auto a : alternative)
+    {
+        total += a.exp_beta_utility(beta);
+
+        if (total > threshold)  // TODO or last alternative
+        {
+            // Store the new location of agent k.
+            printf("  selected i = %d, j = %d\n", a.i, a.j);
+            _i = a.i;
+            _j = a.j;
+            break;
+        }
+    }
+}
+
+
+
+//  Function:       pg_wlu_step
+//
+//  Description:    Basic step of a potential-games RSAP algorithm.
+//
+void pg_wlu_step
+(
+    State  &S,
+    int    &utility,
+    State  &S_best,
+    int    &utility_best,
+    int     visibility_radius_max,
+    int     viewpoint_height_above_terrain,
+    int     dist_max,
+    double  beta
+)
+{
+    int k;
+
+    pg_Viewpoint vp[MAX_NUM_VIEWPOINTS];
+
+    // Find new locations for all viewpoints.
+    for (k = 0; k < S.num_viewpoints; ++k)
+    {
+        vp[k].new_location(S, k, visibility_radius_max,
+                           viewpoint_height_above_terrain, dist_max, beta);
+    }
+
+    // Move the viewpoints.
+    for (k = 0; k < S.num_viewpoints; ++k)
+    {
+        S.pi[k] = vp[k].i();
+        S.pj[k] = vp[k].j();
+    }
+}
+
+
+/*
+ *  Purpose:    Optimize the positions of several viewpoints by a potential-
+ *              games algortihm.
+ *
+ *  Returns:    Utility of final configuration.
+ *              Also sets S to the final state.
+ */
+int pg_rsap
+(
+    State  &S,                          // initial state (initial viewpoints)
+    int     visibility_radius_max,
+    int     viewpoint_height_above_terrain,
+    int     dist_max,
+    double  beta,
+    int     time_max,
+    const char *bmp_sequence_basename
+)
+{
+    printf("visibility_radius_max = %d\n", visibility_radius_max);
+    printf("dist_max = %d\n", dist_max);
+    printf("beta = %f\n", beta);
+    printf("time_max = %d\n", time_max);
+
+    // Initialize v and compute utility.
+    cvis_wang_malloc(&v, &z, srtm,
+                     S.num_viewpoints, S.pi, S.pj, S.pcommunicating,
+                     visibility_radius_max,
+                     viewpoint_height_above_terrain);
+
+    int utility = cvis_wang_count(&v);
+
+    printf("utility = %d\n", utility);
+
+    // The RSAP loop
+    State   S_best              = S;
+    int     utility_best        = utility;
+    int     time                = 0;
+
+    do
+    {
+        printf("time = %d\n", time);
+
+        pg_wlu_step(S, utility, S_best, utility_best,
+                    visibility_radius_max, viewpoint_height_above_terrain,
+                    dist_max, beta);
+
+        ++time;
+    } while (time < time_max);
+
+    S = S_best;
+
+    return utility_best;
+}
+

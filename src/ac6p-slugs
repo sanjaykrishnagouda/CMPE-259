@@ -1,0 +1,2 @@
+./visibility -h ../Data/SRTM_1_Arc_Second/N36W123.hgt -123 36 -h ../Data/SRTM_1_Arc_Second/N36W122.hgt -122 36 -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -h ../Data/SRTM_1_Arc_Second/N37W122.hgt -122 37 -w -122.09 -121.55 37.00 37.11 -e 15 -V ac6p-slugs.bmp -122.063012 37.000981
+./bmp2html ac6p-slugs.bmp -o ac6p-slugs.html

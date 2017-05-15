@@ -1,0 +1,1 @@
+Temperature.o: Temperature.cpp Statistics.h Temperature.h

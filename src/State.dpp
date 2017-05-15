@@ -1,0 +1,1 @@
+State.o: State.cpp srtm.h cvis_wang.h visibility.h ge.h Disk.h State.h

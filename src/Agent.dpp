@@ -1,0 +1,2 @@
+Agent.o: Agent.cpp srtm.h cvis_wang.h bmp.h visibility.h Disk.h State.h \
+  Statistics.h Temperature.h Agent.h

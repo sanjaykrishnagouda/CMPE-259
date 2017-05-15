@@ -1,0 +1,490 @@
+head	1.13;
+access;
+symbols
+	ver1_2:1.11
+	ver1_12:1.11
+	ver1_11:1.10
+	ver1_1:1.9
+	ver1_03:1.9
+	ver1_02:1.9
+	v1_01:1.9
+	v1_0:1.9
+	beta1:1.9;
+locks; strict;
+comment	@ * @;
+
+
+1.13
+date	2013.06.14.02.41.54;	author kerryveenstra;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2013.03.06.09.12.44;	author kerryveenstra;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2011.11.18.06.02.49;	author kerryveenstra;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2011.11.16.06.03.50;	author kerryveenstra;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.10.26.01.11.24;	author kerryveenstra;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.08.05.16.11.35;	author kerryveenstra;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.01.01.57.45;	author kerryveenstra;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.04.29.21.21.37;	author kerryveenstra;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.03.25.15.23.23;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.03.25.10.57.55;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.03.25.02.39.05;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.02.17.57;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.26.09;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@header for SRTM utilities
+@
+
+
+1.13
+log
+@improved comments
+@
+text
+@/**************************************************************************
+
+File:           srtm.h
+
+Description:    Provide an interface to Space Shuttle Topography Mission
+                data files.
+
+                For efficient data access, this interface stores an entire
+                one-degree-square SRTM tile in memory and represents
+                longitude and latitude as the number of seconds north of
+                the tile's south border or east of the tile's west border.
+
+                The SRTM tiles overlap by one row/column of data points on
+                all borders.  Since there are 3600 seconds in a degree, the
+                extra row/column of each tile causes it to have 3601 rows
+                and 3601 columns.
+
+                Example of relationship between longitude and index i.
+
+                Longitude = -123 0'0"   -122 59'59"   -122 0'1'    -122 0'0"
+                                |------------|---- ... ---|------------|
+                        i =     0*           1          3599         3600
+
+                For longitude west of the Grenwich meridian, dd mm'ss", the
+                index i = 3600 - 60 * mm - s.
+
+
+                Example of relationship between latitude and index j.
+
+                Longitude =  36 0'0"      36 0' 0"     36 59'59"    37 0'0"
+                                |------------|---- ... ---|------------|
+                        j =     0            1          3599         3600*
+
+                For latitude north of the equator, dd mm'ss", the index
+                j = 60 * mm + s.
+
+                The interface provides functions that convert from lat/lon
+                represented as a pair of doubles into integral (i, j).
+
+Global Functions:
+
+                srtm_malloc()           Read SRTM file into memory.
+                srtm_free()             Free SRTM memory.
+                srtm_find_limits()      Lat/lon --> i, j
+                srtm_fix_elevations()   i, j --> lat/lon
+                srtm_find_viewpoint()
+
+**************************************************************************/
+
+
+// Get int16_t and int32_t
+#include <stdint.h>
+
+#define MAX_INDEX       3600    // Min index is 0, for 3601 elements.
+
+
+// special data values
+#define MISSING_DATA  -32768
+#define VIEWPOINT      -9999    // Not from file; temp value when writing BMP.
+
+
+typedef struct
+{
+    int     origin_lon_deg;     // [-180 .. 180].  Is < 0 in North America.
+    int     origin_lat_deg;     // [ -90 ..  90].
+
+    // optional window and computed limits
+    double  longitude_min;
+    double  longitude_max;
+    double  latitude_min;
+    double  latitude_max;
+    int     h_min;
+    int     h_max;
+    int     i_min;
+    int     i_max;
+    int     j_min;
+    int     j_max;
+
+    int16_t *h[MAX_INDEX + 1];
+} SRTM_TILE;
+
+
+SRTM_TILE *srtm_malloc
+(
+    const char *filename,
+    int         origin_lon_deg,
+    int         origin_lat_deg
+);
+
+void srtm_free(SRTM_TILE **srtm);
+
+void srtm_find_limits
+(
+    SRTM_TILE  *srtm,
+    double      latitude_min,
+    double      longitude_min,
+    double      latitude_max,
+    double      longitude_max,
+
+    // results
+    int        *p_h_min,
+    int        *p_h_max,
+    int        *p_i_min,
+    int        *p_i_max,
+    int        *p_j_min,
+    int        *p_j_max
+);
+
+void srtm_fix_elevations(SRTM_TILE  *srtm);
+
+void srtm_find_viewpoint
+(
+    double      viewpoint_longitude,
+    double      viewpoint_latitude,
+
+    // results
+    int        *p_viewpoint_i,
+    int        *p_viewpoint_j
+);
+@
+
+
+1.12
+log
+@reorder parameters to match lat/lon order.
+@
+text
+@d1 49
+a49 20
+// Example of relationship between longitude and index i.
+//
+// Longitude = -123 0'0"   -122 59'59"   -122 0'1'    -122 0'0"
+//                 |            |            |            |
+//                 |------------|---- ... ---|------------|
+//                 |            |            |            |
+//         i =     0*           1          3599         3600
+//
+// For longitude dd mm'ss", the index i = 3600 - 60 * mm - s.
+
+
+// Example of relationship between latitude and index i.
+//
+// Longitude =  36 0'0"      36 0' 0"     36 59'59"    37 0'0"
+//                 |            |            |            |
+//                 |------------|---- ... ---|------------|
+//                 |            |            |            |
+//         j =     0            1          3599         3600*
+//
+// For latitude dd mm'ss", the index j = 60 * mm + s.
+@
+
+
+1.11
+log
+@add #defines for special data values
+@
+text
+@d66 1
+d68 1
+a69 2
+    double      latitude_min,
+    double      latitude_max,
+@
+
+
+1.10
+log
+@move i and j limits into structs
+@
+text
+@d25 6
+a30 1
+#define MAX_INDEX 3600
+@
+
+
+1.9
+log
+@reverting to version as of 2011/07/17
+@
+text
+@d30 15
+a44 2
+    int      origin_lon_deg;     // [-180 .. 180].  Is < 0 in North America.
+    int      origin_lat_deg;     // [ -90 ..  90].
+@
+
+
+1.8
+log
+@added max_index field
+added num_hgt_files field
+@
+text
+@d1 1
+a1 1
+// --------------------------------------------------------------------
+d3 1
+a3 13
+// All data structures locate coordinate (0,0) in the southwest corner.
+//
+// The SRTM .hgt files themselves store the northernmost rows of data
+// before the southernmost rows, but the srtm_malloc() function stores
+// the southernmost rows at the lower indexes in the data array.
+//
+// --------------------------------------------------------------------
+
+
+// Example of relationship between west longitude and index i.
+//
+// Longitude = -123.000000 -122.999722   -122.000278  -122.000000
+//             -123 00'00" -122 59'59"   -122 00'01"  -122 00'00"
+d7 1
+a7 1
+//         i =     0            1          3599         3600
+d9 1
+a9 1
+// For west longitude dd mm'ss", the index i = 3600 - 60 * mm - ss.
+d12 1
+a12 1
+// Example of relationship between north latitude and index j.
+d14 1
+a14 2
+// Latitude  =  36.000000    36.000278    36.999722    37.000000
+//              36 00'00"    36 00'01"    36 59'59"    37 00'00"
+d18 1
+a18 1
+//         j =     0            1          3599         3600
+d20 1
+a20 1
+// For north latitude dd mm'ss", the index j = 60 * mm + ss.
+a24 1
+#define BOOL      int
+d30 3
+a32 4
+    int      origin_lon_deg;    // [-180 .. 180].  Is < 0 in North America.
+    int      origin_lat_deg;    // [ -90 ..  90].
+    int      max_index;         // of array below
+    int16_t *h[1];              // Actual length set during memory allocation
+d38 3
+a40 4
+    const char **filename,
+    int         *origin_lon_deg,
+    int         *origin_lat_deg,
+    int          num_hgt_files
+d45 1
+a45 1
+BOOL srtm_find_limits
+a65 1
+    SRTM_TILE  *srtm,
+@
+
+
+1.7
+log
+@corrected prototype for srtm_free()
+renamed srtm_find_elevation_limits to srtm_find_limits
+added prototype for srtm_find_viewpoint
+@
+text
+@d1 1
+a1 1
+// Example of relationship between longitude and index i.
+d3 13
+a15 1
+// Longitude = -123 0'0"   -122 59'59"   -122 0'1'    -122 0'0"
+d19 1
+a19 1
+//         i =     0*           1          3599         3600
+d21 1
+a21 1
+// For longitude dd mm'ss", the index i = 3600 - 60 * mm - s.
+d24 1
+a24 1
+// Example of relationship between latitude and index i.
+d26 2
+a27 1
+// Longitude =  36 0'0"      36 0' 0"     36 59'59"    37 0'0"
+d31 1
+a31 1
+//         j =     0            1          3599         3600*
+d33 1
+a33 1
+// For latitude dd mm'ss", the index j = 60 * mm + s.
+d38 1
+d44 4
+a47 3
+    int      origin_lon_deg;     // [-180 .. 180].  Is < 0 in North America.
+    int      origin_lat_deg;     // [ -90 ..  90].
+    int16_t *h[MAX_INDEX + 1];
+d53 4
+a56 3
+    const char *filename,
+    int         origin_lon_deg,
+    int         origin_lat_deg
+d61 1
+a61 1
+void srtm_find_limits
+d82 1
+@
+
+
+1.6
+log
+@switch from INT16 and INT32 to stdint.h's int16_t and int32_t
+@
+text
+@d43 1
+a43 1
+void srtm_free(SRTM_TILE *srtm);
+d45 1
+a45 1
+void srtm_find_elevation_limits
+d63 10
+@
+
+
+1.5
+log
+@correct spelling of origin
+add boundary parameters to srtm_find_elevation_limits
+@
+text
+@d22 3
+a26 2
+#define INT16 short
+#define INT32 int
+d30 3
+a32 3
+    int     origin_lon_deg;     // [-180 .. 180].  Is < 0 in North America.
+    int     origin_lat_deg;     // [ -90 ..  90].
+    INT16  *h[MAX_INDEX + 1];
+@
+
+
+1.4
+log
+@move cumulative-visibility type/function to cvis_wang.h
+@
+text
+@d30 1
+a30 1
+    int     origon_lat_deg;     // [ -90 ..  90].
+d44 18
+@
+
+
+1.3
+log
+@rename to srtm_cumulative_visibility_malloc
+add srtm_cumulative_visibility_free
+@
+text
+@a33 7
+typedef struct
+{
+    int     origin_lon_deg;     // [-180 .. 180].  Is < 0 in North America.
+    int     origon_lat_deg;     // [ -90 ..  90].
+    INT32  *z[MAX_INDEX + 1];
+} SRTM_CUMULATIVE_VISIBILITY;
+
+a43 8
+SRTM_CUMULATIVE_VISIBILITY *srtm_cumulative_visibility_malloc
+(
+    SRTM_TILE  *srtm,
+    int         ii,
+    int         jj
+);
+
+void srtm_cumulative_visibility_free (SRTM_CUMULATIVE_VISIBILITY *v);
+@
+
+
+1.2
+log
+@add MAX_INDEX
+@
+text
+@d51 1
+a51 1
+SRTM_CUMULATIVE_VISIBILITY *srtm_cumulative_visibility
+d57 2
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d22 1
+d31 1
+a31 1
+    INT16  *h[3601];
+d38 1
+a38 1
+    INT32  *z[3601];
+@

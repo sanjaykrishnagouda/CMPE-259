@@ -1,0 +1,240 @@
+head	1.3;
+access;
+symbols
+	ver1_2:1.3
+	ver1_12:1.3
+	ver1_11:1.3
+	ver1_1:1.3
+	ver1_03:1.3
+	ver1_02:1.3
+	v1_01:1.3
+	v1_0:1.3
+	beta1:1.3;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2011.03.25.02.42.08;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.02.16.49;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.27.16;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@Wang's algorithm for computing visibility
+@
+
+
+1.3
+log
+@rename to strm_cumulative_visibility_malloc
+add srtm_cumulative_visibility_free
+remove TRACEes
+@
+text
+@#include <stdio.h>
+#include <stdlib.h>
+#include "srtm.h"
+
+#define max(a, b)     ((a) > (b) ? (a) : (b))
+
+#if 0
+#define TRACE(FILE, LINE) \
+{printf("%s(%d)\n", FILE, LINE); fflush(stdout);}
+
+#define TRACE_sd(FILE, LINE, STRING, INTEGER) \
+{printf("%s(%d) %s%d\n", FILE, LINE, STRING, INTEGER); fflush(stdout);}
+
+#define TRACE_sp(FILE, LINE, STRING, POINTER) \
+{printf("%s(%d) %s%p\n", FILE, LINE, STRING, POINTER); fflush(stdout);}
+#else
+#define TRACE(FILE, LINE)
+#define TRACE_sd(FILE, LINE, STRING, INTEGER)
+#define TRACE_sp(FILE, LINE, STRING, POINTER)
+#endif
+
+
+// Octants:
+//
+//           \  3 | 2  /
+//             \  |  /
+//           4   \|/   1
+//           -----------
+//           5   /|\   8
+//             /  |  \
+//           /  6 | 7  \
+//
+SRTM_CUMULATIVE_VISIBILITY *srtm_cumulative_visibility_malloc
+(
+    SRTM_TILE  *srtm,
+    int         ii,
+    int         jj
+)
+{
+    int                             a;
+    int                             b;
+    int                             base_elevation;
+    int                             di;
+    int                             dj;
+    INT16                         **h;
+    int                             i;
+    int                             j;
+    SRTM_CUMULATIVE_VISIBILITY     *v;
+    INT32                         **z;
+
+    v = malloc(sizeof(*v));
+    v->origin_lon_deg = srtm->origin_lon_deg;
+    v->origon_lat_deg = srtm->origon_lat_deg;
+
+    for (i = 0; i <= MAX_INDEX; ++i)
+    {
+        v->z[i] = malloc((MAX_INDEX + 1) * sizeof(v->z[i][0]));
+    }
+
+    h = srtm->h;
+    z = v->z;
+
+    base_elevation = h[ii][jj];
+
+    // first points
+    for (i = ii - 1; i <= ii + 1; ++i)
+    {
+        for (j = jj - 1; j <= jj + 1; ++j)
+        {
+            if (0 <= i && i <= MAX_INDEX &&
+                0 <= j && j <= MAX_INDEX)
+            {
+                z[i][j] = h[i][j] - base_elevation;
+            }
+        }
+    }
+
+
+#define OCTANT 1
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 2
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 3
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 4
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 5
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 6
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 7
+#include "wang.i"
+#undef OCTANT
+
+#define OCTANT 8
+#include "wang.i"
+#undef OCTANT
+
+
+    return v;
+}
+
+
+void srtm_cumulative_visibility_free (SRTM_CUMULATIVE_VISIBILITY *v)
+{
+    int i;
+
+    for (i = 0; i <= MAX_INDEX; ++i)
+    {
+        free(v->z[i]);
+    }
+
+    free(v);
+}
+
+
+@
+
+
+1.2
+log
+@use MAX_INDEX
+@
+text
+@d7 3
+a9 5
+//#define TRACE(FILE, LINE) \
+    printf("%s(%d)\n", FILE, LINE)
+
+//#define TRACE_sd(FILE, LINE, STRING, INTEGER) \
+    printf("%s(%d) %s%d\n", FILE, LINE, STRING, INTEGER)
+d11 2
+d14 3
+d20 1
+d33 1
+a33 1
+SRTM_CUMULATIVE_VISIBILITY *srtm_cumulative_visibility
+a78 1
+TRACE(__FILE__, __LINE__);
+a82 1
+TRACE(__FILE__, __LINE__);
+a86 10
+#define TRACE(FILE, LINE) \
+{printf("%s(%d)\n", FILE, LINE); fflush(stdout);}
+
+#define TRACE_sd(FILE, LINE, STRING, INTEGER) \
+{printf("%s(%d) %s%d\n", FILE, LINE, STRING, INTEGER); fflush(stdout);}
+
+#define TRACE_sp(FILE, LINE, STRING, POINTER) \
+{printf("%s(%d) %s%p\n", FILE, LINE, STRING, POINTER); fflush(stdout);}
+
+TRACE(__FILE__, __LINE__);
+a90 1
+TRACE(__FILE__, __LINE__);
+a94 1
+TRACE(__FILE__, __LINE__);
+a98 1
+TRACE(__FILE__, __LINE__);
+a102 1
+TRACE(__FILE__, __LINE__);
+a106 1
+TRACE(__FILE__, __LINE__);
+a110 1
+TRACE(__FILE__, __LINE__);
+d114 15
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d51 1
+a51 1
+    for (i = 0; i <= 3600; ++i)
+d53 1
+a53 1
+        v->z[i] = malloc(3601 * sizeof(v->z[i][0]));
+d66 2
+a67 2
+            if (0 <= i && i <= 3600 &&
+                0 <= j && j <= 3600)
+@

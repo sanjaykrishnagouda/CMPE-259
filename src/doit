@@ -1,0 +1,10 @@
+cp bmp.cpp ../src-2011-11-06
+cp corners2.cpp ../src-2011-11-06
+cp cvis_wang.cpp ../src-2011-11-06
+cp grd.cpp ../src-2011-11-06
+cp msg.cpp ../src-2011-11-06
+cp srtm.cpp ../src-2011-11-06
+cp srtm_test.cpp ../src-2011-11-06
+cp ucsclim.cpp ../src-2011-11-06
+cp voids.cpp ../src-2011-11-06
+cp visibility.cpp ../src-2011-11-06

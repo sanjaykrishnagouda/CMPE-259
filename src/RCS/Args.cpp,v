@@ -1,0 +1,418 @@
+head	1.4;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.4
+date	2013.06.14.02.50.01;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2013.03.28.16.59.08;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2013.03.06.00.42.10;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.03.02.22.27.24;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@argument processing
+@
+
+
+1.4
+log
+@improved comments
+@
+text
+@/**************************************************************************
+
+File:           Args.h
+
+Class:          Args
+
+Description:    Record a pointer to the variable that each command-line
+                argument affects and then parse argc and argv.
+
+Methods:        These methods define command-line options:
+
+                Method                      Example Command-Line Option
+                ----------------------      ---------------------------
+                define()                    -p
+                                            -p 1
+                                            -p 1.0
+
+                define_latlon()             -p 1 2
+
+                define_latlon_vector()      -p 1 2  -p 1 2 ...
+
+                define_window()             -p 1 2 3 4
+
+                define()                    -p abc
+
+
+                These remaining methods parse the arguments and deal with
+                the usage string.
+
+                parse()
+                define_usage()
+                print_usage()
+
+**************************************************************************/
+
+#include <cctype>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include <stdio.h>
+
+extern "C"
+{
+#include "msg.h"
+}
+
+using std::string;
+using std::vector;
+
+#include "Args.h"
+
+
+// After Args::define...() have been called to specify valid command-line
+// options, call this method to parse argc/argv into the previosly identified
+// variables.
+//
+void Args::parse(int argc, char **argv)
+{
+    char   *suffix;
+    double  lat, lat_min, lat_max;
+    double  lon, lon_min, lon_max;
+
+    if (argc == 1) print_usage();
+
+    for (int i = 1; i < argc; ++i)
+    {
+        for (auto a : descriptions)
+        {
+            if (strcmp(a.dash.c_str(), argv[i]) == 0)
+            {
+                switch (a.option_type)
+                {
+                    case ARG_OPTION_TYPE_BOOL:
+                        // -p
+                        *a.p_b = true;
+                        break;
+
+                    case ARG_OPTION_TYPE_DOUBLE:
+                        // -p 1.0
+                        if (i + 1 >= argc)
+                        {
+                            msg_error("%s option requires a number", argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        *a.p_d = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+                        break;
+
+                    case ARG_OPTION_TYPE_INT:
+                        // -p 1
+                        if (i + 1 >= argc)
+                        {
+                            msg_error("%s option requires an integer", argv[i]);
+                        }
+
+                        ++i;    // next argv should be an int
+
+                        *a.p_i = (int) strtol(argv[i], &suffix, 10);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not an integer",
+                                      a.dash.c_str(), argv[i]);
+                        }
+                        break;
+
+                    case ARG_OPTION_TYPE_LATLON:
+                        // -p 1 2
+                        // If respecified, overwrite the data.
+                        if ((*a.p_latlons).size() != 0)
+                        {
+                            (*a.p_latlons).clear();
+                        }
+
+                        // no break; fall through
+
+                    case ARG_OPTION_TYPE_LATLON_VECTOR:
+                        // ( -p 1 2 )+
+                        if (i + 2 >= argc)
+                        {
+                            msg_error("%s option requires latitude and"
+                                      " longitude", argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lat = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lon = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        (*a.p_latlons).push_back(ArgLatlon(lat, lon));
+                        break;
+
+                    case ARG_OPTION_TYPE_STRING:
+                        // -p abc
+                        if (i + 1 >= argc)
+                        {
+                            msg_error("%s option requires a parameter",
+                                      argv[i]);
+                        }
+
+                        ++i;    // next argv
+
+                        *a.p_str = argv[i];
+                        break;
+
+                    case ARG_OPTION_TYPE_WINDOW:
+                        // -p 1 2 3 4
+                        if (i + 4 >= argc)
+                        {
+                            msg_error("%s option requires latitude min/max and"
+                                      " longitude min/max", argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lat_min = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lon_min = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lat_max = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        ++i;    // next argv should be a double
+
+                        lon_max = strtod(argv[i], &suffix);
+
+                        if (suffix == argv[i] || *suffix != '\0')
+                        {
+                            msg_error("%s option: \"%s\" is not a number",
+                                      a.dash.c_str(), argv[i]);
+                        }
+
+                        // If respecified, overwrite the data.
+                        if ((*a.p_latlons).size() != 0)
+                        {
+                            (*a.p_latlons).clear();
+                        }
+
+                        (*a.p_latlons).push_back(ArgLatlon(lat_min, lon_min));
+                        (*a.p_latlons).push_back(ArgLatlon(lat_max, lon_max));
+                        break;
+                }
+
+                goto next_arg;
+            }
+        }
+
+        msg_error("unknown option %s", argv[i]);
+next_arg: ;
+    }
+}
+
+
+void ArgDescription::debug_print()
+{
+    switch (option_type)
+    {
+        case ARG_OPTION_TYPE_BOOL:
+            printf("    %s bool\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_DOUBLE:
+            printf("    %s double\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_INT:
+            printf("    %s int\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_LATLON:
+            printf("    %s latlon\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_LATLON_VECTOR:
+            printf("    %s latlon vector\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_STRING:
+            printf("    %s string\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_WINDOW:
+            printf("    %s window\n", dash.c_str());
+            break;
+
+        default:
+            printf("    %s option_type %d\n", dash.c_str(), option_type);
+            break;
+    }
+}
+
+@
+
+
+1.3
+log
+@Changed LATLONS into LATLON and LATLON_VECTOR.
+Added STRING and WINDOW.
+@
+text
+@d1 35
+@
+
+
+1.2
+log
+@finished coding
+first working version
+@
+text
+@d19 4
+a22 31
+void ArgDescription::debug_print()
+{
+    switch (option_type)
+    {
+        case ARG_OPTION_TYPE_DOUBLE:
+            printf("    %s double\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_INT:
+            printf("    %s int\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_LATLONS:
+            printf("    %s latlon\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_STRING:
+            printf("    %s string\n", dash.c_str());
+            break;
+
+        case ARG_OPTION_TYPE_BOOL:
+            printf("    %s bool\n", dash.c_str());
+            break;
+
+        default:
+            printf("    %s option_type %d\n", dash.c_str(), option_type);
+            break;
+    }
+}
+
+
+d26 2
+a27 2
+    double  lat;
+    double  lon;
+d39 5
+d45 1
+d63 1
+d80 12
+a91 1
+                    case ARG_OPTION_TYPE_LATLONS:
+d122 1
+d134 56
+a189 3
+                    case ARG_OPTION_TYPE_BOOL:
+                        // option has no argument
+                        *a.p_b = true;
+d201 40
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d24 1
+a24 1
+            printf("    %s double %p\n", dash.c_str(), p_d);
+d28 1
+a28 1
+            printf("    %s int %p\n", dash.c_str(), p_i);
+d31 2
+a32 2
+        case ARG_OPTION_TYPE_LATLON:
+            printf("    %s latlon %p %p\n", dash.c_str(), latlon.p_lat, latlon.p_lon);
+d36 9
+a44 1
+            printf("    %s string %p\n", dash.c_str(), p_str);
+d52 3
+a54 1
+    char *suffix;
+d100 1
+a100 1
+                    case ARG_OPTION_TYPE_LATLON:
+d109 1
+a109 1
+                        *a.latlon.p_lat = strtod(argv[i], &suffix);
+d119 1
+a119 1
+                        *a.latlon.p_lon = strtod(argv[i], &suffix);
+d126 2
+d141 5
+@

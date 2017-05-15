@@ -1,0 +1,1 @@
+cvis_wang.o: cvis_wang.cpp srtm.h cvis_wang.h cvis_wang.i

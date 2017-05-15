@@ -1,0 +1,2 @@
+visibility.o: visibility.cpp srtm.h cvis_wang.h bmp.h data.h msg.h \
+  visibility.h ge.h Args.h Statistics.h Disk.h State.h pg.h grd.h sa.h

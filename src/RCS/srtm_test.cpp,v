@@ -1,0 +1,47 @@
+head	1.1;
+access;
+symbols
+	ver1_2:1.1
+	ver1_12:1.1
+	ver1_11:1.1
+	ver1_1:1.1;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2011.11.11.08.30.08;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@stub for testing srtm routines
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@#include <stdio.h>
+#include <stdlib.h>
+
+extern "C"
+{
+#include "srtm.h"
+#include "data.h"
+}
+
+
+int main(int argc, char **argv)
+{
+    SRTM_TILE  *srtm = srtm_malloc(W123N37, -123, 37);
+    // srtm_malloc(W123N36, -123, 36);
+
+    srtm_free(&srtm);
+
+    return 0;
+}
+@

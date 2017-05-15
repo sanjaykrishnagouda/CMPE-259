@@ -1,0 +1,81 @@
+# Uncomment one of the lines below to build a prior version.
+#COFLAGS = -rbeta1
+#COFLAGS = -rver1_0
+
+
+EXECUTABLES = \
+    corners2 \
+    srtm_test \
+    ucsclim \
+    visibility \
+    voids \
+
+
+# For automatic include-file dependency generation.
+C_FILES = \
+    bmp.c \
+    corners2.c \
+    cvis_wang.c \
+    msg.c \
+    srtm.c \
+    srtm_test.c \
+    ucsclim.c \
+    visibility.c \
+    voids.c \
+
+
+GENERATED_DATA_FILES = \
+    braemoor-viewshed-2.bmp \
+
+
+# It usually takes a while to generate these, and so I comment them out.
+# Place one of the file names under the GENERATE_DATA_FILES variable, above.
+#
+#    braemoor-limited-50-cvis-2.bmp \
+#    braemoor-height-2.bmp \
+#    braemoor-viewshed-2.bmp \
+#    braemoor-cvis-2.bmp \  commented out to avoid 17-hour re-run
+
+
+.PHONY: all
+all : $(EXECUTABLES) $(GENERATED_DATA_FILES)
+
+
+.PHONY: clean
+clean:
+	rm -f *.o *.d $(EXECUTABLES) 
+
+
+# Object files of each executable:
+corners2    : corners2.o
+ucsclim     : ucsclim.o
+voids       : voids.o
+srtm_test   : srtm_test.o  srtm.o
+visibility  : visibility.o srtm.o cvis_wang.o bmp.o msg.o
+
+
+CPPFLAGS = -ggdb
+
+include $(subst .c,.d,$(C_FILES))
+
+%.d: %.c
+	$(CC) -MM -MG $(CPPCFLAGS) $< > $@.$$$$; \
+	sed 's,/($*/)/.o[ :]*,/1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+
+
+braemoor-viewshed-2.bmp : visibility
+	./visibility -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -w -122.2 -122.1 37.1 37.2 -V $@ -122.1489 37.1158 -v -122.19 37.11
+
+
+braemoor-cvis-2.bmp : visibility
+	./visibility -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -w -122.2 -122.1 37.1 37.2 -C $@
+
+
+braemoor-limited-50-cvis-2.bmp : visibility
+	./visibility -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -w -122.2 -122.1 37.1 37.2 -r 50 -C $@
+
+
+braemoor-height-2.bmp : visibility
+	./visibility -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -w -122.2 -122.1 37.1 37.2 -H $@
+

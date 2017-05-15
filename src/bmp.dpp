@@ -1,0 +1,1 @@
+bmp.o: bmp.cpp srtm.h cvis_wang.h msg.h bmp.h

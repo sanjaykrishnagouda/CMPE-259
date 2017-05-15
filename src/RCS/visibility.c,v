@@ -1,0 +1,1451 @@
+head	1.18;
+access;
+symbols
+	ver1_2:1.18
+	ver1_12:1.18
+	ver1_11:1.18
+	ver1_1:1.18
+	ver1_03:1.18
+	ver1_02:1.17
+	v1_01:1.16
+	v1_0:1.15
+	beta1:1.14;
+locks; strict;
+comment	@ * @;
+
+
+1.18
+date	2011.10.30.04.25.03;	author kerryveenstra;	state Exp;
+branches;
+next	1.17;
+
+1.17
+date	2011.10.27.22.39.54;	author kerryveenstra;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	2011.10.26.21.16.16;	author kerryveenstra;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	2011.10.26.06.15.19;	author kerryveenstra;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	2011.10.26.01.11.24;	author kerryveenstra;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2011.08.05.16.17.02;	author kerryveenstra;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2011.07.26.01.49.46;	author kerryveenstra;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2011.07.20.22.19.10;	author kerryveenstra;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2011.06.30.05.39.35;	author kerryveenstra;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.05.05.04.53.03;	author kerryveenstra;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.05.01.05.09.01;	author kerryveenstra;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.05.01.02.01.13;	author kerryveenstra;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.04.29.21.28.08;	author kerryveenstra;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.03.25.15.26.43;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.03.25.11.11.21;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.03.25.11.03.05;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.02.40.34;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.26.44;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@compute cumulative visibility of SRTM data
+@
+
+
+1.18
+log
+@added -G option
+@
+text
+@#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <limits.h>
+
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "bmp.h"
+#include "data.h"
+#include "msg.h"
+#include "visibility.h"
+#include "grd.h"
+
+#define SQRT_INT_MAX    46340   // SQRT_INT_MAX^2 fits in a 32-bit int
+
+SRTM_TILE  *srtm = NULL;
+CVIS_WANG  *v    = NULL;
+int       **z    = NULL;
+
+
+void cleanup(void)
+{
+    cvis_wang_free(&v, &z);
+    srtm_free(&srtm);
+}
+
+
+void usage(void)
+{
+    msg_message(
+        "Usage: visibility [options]\n"
+        "Options:\n"
+        "    -h infile.hst longitude latitude        read HST file for pt\n"
+        "    -H outfile.bmp                          write BMP height file\n"
+        "    -w long_min long_max lat_min lat_max    specify window\n"
+        "    -r radius_max                           radius for cumulative visibility\n"
+        "    -V outfile.bmp longitude latitude       write visibility at pt\n"
+        "    -C outfile.bmp                          write cumulative visibility\n"
+        "    -v longitude latitude                   additional pts\n"
+        );
+
+    exit(0);
+}
+
+
+double arg_double(const char *s)
+{
+    char *suffix;
+
+    double result = strtod(s, &suffix);
+
+    if (suffix == s || *suffix != '\0')
+    {
+        msg_error("%s is not a floating-point parameter", s);
+    }
+
+    return result;
+}
+
+void check_args
+(
+    int         argc,
+    char      **argv,
+    char      **p_filename_hst,
+    double     *p_longitude,
+    double     *p_latitude,
+    char      **p_filename_heights_bmp,     // non-NULL if filename is given
+    double     *p_window_longitude_min,
+    double     *p_window_longitude_max,
+    double     *p_window_latitude_min,
+    double     *p_window_latitude_max,
+    char      **p_filename_visibility_bmp,  // non-NULL if filename is given
+    int        *p_num_viewpoints,
+    double     *p_viewpoint_longitude,
+    double     *p_viewpoint_latitude,
+    char      **p_filename_cumulative_visibility_bmp,   // non-NULL if fname
+    int        *p_radius_max,
+    char      **p_filename_gradient_ascent  // non-NULL if fname
+)
+{
+    int a;
+    int i;
+
+    if (argc == 1) usage();
+
+    // Default values.
+    *p_filename_hst                         = NULL;
+    *p_filename_heights_bmp                 = NULL;
+    *p_filename_visibility_bmp              = NULL;
+    *p_filename_cumulative_visibility_bmp   = NULL;
+    *p_radius_max                           = SQRT_INT_MAX;
+    *p_window_longitude_min                 = -180.01;
+    *p_window_longitude_max                 =  180.01;
+    *p_window_latitude_min                  =  -90.01;
+    *p_window_latitude_max                  =   90.01;
+    *p_num_viewpoints                       = 0;
+    *p_filename_gradient_ascent             = NULL;
+
+    for (a = 1; a < argc; ++a)
+    {
+        // check for option like "-L"
+        if (argv[a] == NULL    ||
+            argv[a][0] != '-'  ||
+            argv[a][1] == '\0' ||
+            argv[a][2] != '\0') msg_error("Expected option at %s", argv[a]);
+
+        switch(argv[a][1])
+        {
+            case 'h':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -h infile.hst longitude latitude");
+                }
+
+                *p_filename_hst = argv[++a];
+                *p_longitude    = arg_double(argv[++a]);
+                *p_latitude     = arg_double(argv[++a]);
+                break;
+
+            case 'w':
+                if (a + 4 >= argc)
+                {
+                    msg_error("Format is -w longitude-min longitude-max latitude-min latitude-max");
+                }
+
+                *p_window_longitude_min = arg_double(argv[++a]);
+                *p_window_longitude_max = arg_double(argv[++a]);
+                *p_window_latitude_min  = arg_double(argv[++a]);
+                *p_window_latitude_max  = arg_double(argv[++a]);
+                break;
+
+            case 'H':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -H outfile.bmp");
+                }
+
+                *p_filename_heights_bmp = argv[++a];
+                break;
+
+            case 'V':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -V outfile.bmp viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_filename_visibility_bmp  = argv[++a];
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'G':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -G outfile.TBD viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_filename_gradient_ascent = argv[++a];
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'v':
+                if (a + 2 >= argc)
+                {
+                    msg_error("Format is -v viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'C':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -C outfile.bmp");
+                }
+
+                *p_filename_cumulative_visibility_bmp = argv[++a];
+                break;
+
+            case 'r':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -r radius_max");
+                }
+
+                *p_radius_max = arg_double(argv[++a]);
+                break;
+
+            default:
+                msg_error("Unknown option argv[a]");
+                break;
+        }
+    }
+
+    if (*p_filename_hst == NULL) msg_error ("must specify an HST file");
+
+//    printf("filename hst = %s\n", *p_filename_hst);
+//    printf("longitude = %f\n", *p_longitude);
+//    printf("latitude = %f\n", *p_latitude);
+//    printf("filename heights = %s\n", *p_filename_heights_bmp);
+//    printf("window longitude min = %f\n", *p_window_longitude_min);
+//    printf("window longitude max = %f\n", *p_window_longitude_max);
+//    printf("window latitude min = %f\n", *p_window_latitude_min);
+//    printf("window latitude max = %f\n", *p_window_latitude_max);
+//    printf("filename visibility = %s\n", *p_filename_visibility_bmp);
+//
+//    for (i = 0; i < *p_num_viewpoints; ++i)
+//    {
+//        printf("viewpoint longitude[%d] = %f\n", i, p_viewpoint_longitude[i - *p_num_viewpoints]);
+//        printf("viewpoint latitude[%d] = %f\n", i, p_viewpoint_latitude[i - *p_num_viewpoints]);
+//    }
+//
+//    printf("filename cumulative visibility = %s\n", *p_filename_cumulative_visibility_bmp);
+//    printf("radius max = %d\n", *p_radius_max);
+}
+
+
+int main(int argc, char **argv)
+{
+    int     h_min, h_max;
+    int     i, j;
+    int     window_left_edge, window_right_edge;
+    int     window_bottom_edge, window_top_edge;
+    char   *filename_hst;
+    double  longitude;
+    double  latitude;
+    double  window_longitude_min;
+    double  window_longitude_max;
+    double  window_latitude_min;
+    double  window_latitude_max;
+    char   *filename_heights_bmp;
+    int     num_viewpoints;
+    double  viewpoint_longitude[MAX_NUM_VIEWPOINTS];
+    double  viewpoint_latitude[MAX_NUM_VIEWPOINTS];
+    char   *filename_visibility_bmp;
+    int     viewpoint_i[MAX_NUM_VIEWPOINTS];
+    int     viewpoint_j[MAX_NUM_VIEWPOINTS];
+    char   *filename_cumulative_visibility_bmp;
+    int     radius_max;
+    char   *filename_gradient_ascent;
+    time_t  t1;     // used by loop timer; start of loop
+    time_t  t2;     // used by loop timer; end of current iteration
+    time_t  t3;     // used by loop timer; estimated completion
+
+    check_args(argc, argv,
+               &filename_hst, &longitude, &latitude, 
+               &filename_heights_bmp,
+               &window_longitude_min, &window_longitude_max,
+               &window_latitude_min, &window_latitude_max,
+               &filename_visibility_bmp,
+               &num_viewpoints,
+               viewpoint_longitude, viewpoint_latitude,
+               &filename_cumulative_visibility_bmp,
+               &radius_max,
+               &filename_gradient_ascent);
+
+    srtm = srtm_malloc(filename_hst, longitude, latitude);
+    //srtm = srtm_malloc(W123N37, -123, 37);
+    //srtm = srtm_malloc(W123N36, -123, 36);
+
+//    srtm_fix_elevations(srtm);
+    srtm_find_limits(srtm,
+                     window_longitude_min, window_longitude_max,
+                     window_latitude_min,  window_latitude_max,
+                     &h_min,               &h_max,
+                     &window_left_edge,    &window_right_edge,
+                     &window_bottom_edge,  &window_top_edge);
+    // UCSC bounding box
+    //srtm_find_limits(srtm, -122.069, -122.048, 36.977, 37.004,
+    //                           &h_min, &h_max, &window_left_edge, &window_right_edge, &window_bottom_edge, &window_top_edge);
+
+    for (i = 0; i < num_viewpoints; ++i)
+    {
+        srtm_find_viewpoint(viewpoint_longitude[i], viewpoint_latitude[i],
+                            &viewpoint_i[i], &viewpoint_j[i]);
+    }
+
+    if (filename_heights_bmp != NULL)
+    {
+        printf("heights\n");
+        bmp_srtm_write(srtm, filename_heights_bmp,
+                       h_min,
+                       h_max,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+    }
+
+    if (filename_visibility_bmp != NULL)
+    {
+        cvis_wang_malloc(&v, &z, srtm, num_viewpoints, viewpoint_i, viewpoint_j, radius_max);
+
+        bmp_cvis_wang_write(v, filename_visibility_bmp,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+    }
+
+    if (filename_cumulative_visibility_bmp != NULL)
+    {
+        int **c;     // cumulative visibility of each point
+
+        // Prepare to record limits of c array's values.
+        int c_min = INT_MAX;
+        int c_max = 0;
+
+        c = calloc(MAX_INDEX + 1, sizeof(c[0]));
+
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            c[i] = calloc(MAX_INDEX + 1, sizeof(int));
+        }
+
+        time(&t1);
+        printf("Start       %s", ctime(&t1));
+
+        for (j = window_bottom_edge; j <= window_top_edge; ++j)
+        {
+            for (i = window_left_edge; i <= window_right_edge; ++i)
+            {
+                int a, b;
+
+                cvis_wang_malloc(&v, &z, srtm, 1, &i, &j, radius_max);
+
+                // count number of visible pixels
+                int n = 0;
+
+                for (b = window_bottom_edge; b <= window_top_edge; ++b)
+                {
+                    for (a = window_left_edge; a <= window_right_edge; ++a)
+                    {
+                        if (v->visible[a][b] > 0) ++n;
+                    }
+                }
+
+                c[i][j] = n;
+
+                if (n < c_min) c_min = n;
+                if (n > c_max) c_max = n;
+            }
+
+            time(&t2);
+
+            t3 = trunc(1.0 *
+                      t2 + (t2 - t1) *
+                      (1 + window_top_edge - j) /
+                      (1 + j - window_bottom_edge) + 0.5);
+
+            printf("%ld %ld %d %d %d ",
+                   t2 - t1,
+                   t3 - t1,
+                   window_bottom_edge,
+                   j,
+                   window_top_edge);
+
+            printf("Est. finish %s", ctime(&t3));
+        }
+
+        // TODO free memory for c
+
+        bmp_int_array_write(c, filename_cumulative_visibility_bmp,
+                       c_min,
+                       c_max,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+    }
+
+    if (filename_gradient_ascent != NULL)
+    {
+        grd_ascend(num_viewpoints,
+                   viewpoint_i,
+                   viewpoint_j,
+                   radius_max,
+                   10,
+                   window_left_edge,
+                   window_right_edge,
+                   window_bottom_edge,
+                   window_top_edge,
+                   filename_gradient_ascent);
+    }
+
+    cleanup();
+    return 0;
+}
+
+@
+
+
+1.17
+log
+@added -v option to support multiple viewpoints in -V computations
+@
+text
+@d14 1
+d79 2
+a80 1
+    int        *p_radius_max
+d99 1
+d164 21
+d274 1
+d288 3
+a290 2
+               &radius_max);
+        
+d306 6
+a325 6
+        for (i = 0; i < num_viewpoints; ++i)
+        {
+            srtm_find_viewpoint(viewpoint_longitude[i], viewpoint_latitude[i],
+                                &viewpoint_i[i], &viewpoint_j[i]);
+        }
+
+d406 14
+@
+
+
+1.16
+log
+@use new multi-viewpoint API of cvis_wang_malloc()
+print estimated time of completion
+@
+text
+@d13 1
+d15 1
+d40 1
+d74 1
+d82 1
+d91 1
+a91 1
+    *p_radius_max                           = INT_MAX;
+d96 1
+d146 6
+d153 26
+a178 2
+                *p_viewpoint_longitude      = arg_double(argv[++a]);
+                *p_viewpoint_latitude       = arg_double(argv[++a]);
+d206 19
+d242 3
+a244 2
+    double  viewpoint_longitude;
+    double  viewpoint_latitude;
+d246 2
+a247 2
+    int     viewpoint_i;
+    int     viewpoint_j;
+d260 2
+a261 1
+               &viewpoint_longitude, &viewpoint_latitude,
+d294 5
+a298 2
+        srtm_find_viewpoint(viewpoint_longitude, viewpoint_latitude,
+                            &viewpoint_i, &viewpoint_j);
+d300 1
+a300 1
+        cvis_wang_malloc(&v, &z, srtm, 1, &viewpoint_i, &viewpoint_j, radius_max);
+@
+
+
+1.15
+log
+@improve progress message
+@
+text
+@d1 1
+d5 1
+d194 3
+d240 1
+a240 1
+        cvis_wang_malloc(&v, &z, srtm, viewpoint_i, viewpoint_j, radius_max);
+d264 3
+a268 2
+            printf("%d %d %d\n", window_bottom_edge, j, window_top_edge);
+
+d273 1
+a273 1
+                cvis_wang_malloc(&v, &z, srtm, i, j, radius_max);
+d291 16
+@
+
+
+1.14
+log
+@reverting to version as of 2011/07/17
+@
+text
+@d261 2
+a283 1
+                printf("%d %d %d\n", i, j, n);
+@
+
+
+1.13
+log
+@moved options into a structure
+added -e option
+HST --> HGT
+-w now uses ddd.mm format
+support four HGT files
+@
+text
+@a0 2
+#include <limits.h>
+#include <math.h>
+d4 1
+a10 24
+#include "visibility.h"
+
+
+#define SQRT_INT_MAX    46340   // SQRT_INT_MAX^2 fits in a 32-bit int
+
+
+typedef struct args
+{
+    const char *filename_hgt[MAX_HGT_FILES];
+    int         num_hgt_files;
+    int         longitude[MAX_HGT_FILES];
+    int         latitude[MAX_HGT_FILES];
+    char       *filename_heights_bmp;     // non-NULL if filename is given
+    int         window_lon_minutes_min;
+    int         window_lon_minutes_max;
+    int         window_lat_minutes_min;
+    int         window_lat_minutes_max;
+    char       *filename_visibility_bmp;  // non-NULL if filename is given
+    double      viewpoint_longitude;
+    double      viewpoint_latitude;
+    char       *filename_cumulative_visibility_bmp;   // non-NULL if fname
+    int         radius_max;
+    int         observer_elevation;
+} ARGS;
+d30 1
+a30 4
+        "    -h infile.hgt longitude latitude        read HGT file for pt\n"
+        "    -w lon.mm LON.MM lat.mm LAT.MM          processing window (mm = minutes)\n"
+        "    -r radius_max (pixels)                  range-limited visibility\n"
+        "    -e elevation (meters)                   observer's elevation (with -V)\n"
+d32 2
+a55 35
+/*
+*   Convert degrees and minutes from ddd.mm into decimal degrees.
+*
+*   Only integral minutes are supported.  Any digits after mm are ignored
+*   (actually rounded).
+*/
+int arg_minutes_of_ddd_mm(const char *s)
+{
+    double  ddd;
+    double  ddd_mm  = arg_double(s);
+    int     sign    = ddd_mm < 0.0 ? -1 : 1;
+    int     mm      = 100.0 * modf(fabs(ddd_mm), &ddd) + 0.5;
+
+    if (mm > 59)
+    {
+        msg_error("%s must be in form ddd.mm with mm < 60", s);
+    }
+
+    return sign * (60 * ((int) ddd) + mm);
+}
+
+int arg_int(const char *s)
+{
+    char *suffix;
+
+    int result = (int) strtol(s, &suffix, 10);
+
+    if (suffix == s || *suffix != '\0')
+    {
+        msg_error("%s is not an integer parameter", s);
+    }
+
+    return result;
+}
+
+d58 15
+a72 3
+    int     argc,
+    char  **argv,
+    ARGS   *a
+d75 1
+a75 1
+    int i;
+d80 9
+a88 11
+    a->num_hgt_files                        = 0;
+    a->filename_heights_bmp                 = NULL;
+    a->filename_visibility_bmp              = NULL;
+    a->filename_cumulative_visibility_bmp   = NULL;
+
+    a->window_lon_minutes_min               = -180;
+    a->window_lon_minutes_max               =  180;
+    a->window_lat_minutes_min               =  -90;
+    a->window_lat_minutes_max               =   90;
+
+    a->observer_elevation                   = 0;
+d90 1
+a90 4
+    // This gets squared later, so make it trunc(sqrt(INT_MAX)).
+    a->radius_max                           = SQRT_INT_MAX;
+
+    for (i = 1; i < argc; ++i)
+d93 4
+a96 4
+        if (argv[i] == NULL    ||
+            argv[i][0] != '-'  ||
+            argv[i][1] == '\0' ||
+            argv[i][2] != '\0') msg_error("Expected option at %s", argv[i]);
+d98 1
+a98 1
+        switch(argv[i][1])
+d101 1
+a101 1
+                if (i + 3 >= argc)
+d103 1
+a103 1
+                    msg_error("Format is -h infile.hgt longitude latitude");
+d106 3
+a108 9
+                if (a->num_hgt_files >= MAX_HGT_FILES)
+                {
+                    msg_error("Too many -h options (%d max)", MAX_HGT_FILES);
+                }
+
+                a->filename_hgt[a->num_hgt_files] = argv[++i];
+                a->longitude[a->num_hgt_files]    = arg_int(argv[++i]);
+                a->latitude[a->num_hgt_files]     = arg_int(argv[++i]);
+                ++a->num_hgt_files;
+d112 1
+a112 1
+                if (i + 4 >= argc)
+d114 1
+a114 1
+                    msg_error("Format is -w lon.mm LON.MM lat.mm LAT.MM");
+d117 4
+a120 4
+                a->window_lon_minutes_min = arg_minutes_of_ddd_mm(argv[++i]);
+                a->window_lon_minutes_max = arg_minutes_of_ddd_mm(argv[++i]);
+                a->window_lat_minutes_min = arg_minutes_of_ddd_mm(argv[++i]);
+                a->window_lat_minutes_max = arg_minutes_of_ddd_mm(argv[++i]);
+d124 1
+a124 1
+                if (i + 1 >= argc)
+d129 1
+a129 1
+                a->filename_heights_bmp = argv[++i];
+d133 1
+a133 1
+                if (i + 3 >= argc)
+d138 3
+a140 3
+                a->filename_visibility_bmp  = argv[++i];
+                a->viewpoint_longitude      = arg_double(argv[++i]);
+                a->viewpoint_latitude       = arg_double(argv[++i]);
+d144 1
+a144 1
+                if (i + 1 >= argc)
+d149 1
+a149 1
+                a->filename_cumulative_visibility_bmp = argv[++i];
+d153 1
+a153 1
+                if (i + 1 >= argc)
+d158 1
+a158 10
+                a->radius_max = arg_double(argv[++i]);
+                break;
+
+            case 'e':
+                if (i + 1 >= argc)
+                {
+                    msg_error("Format is -e elevation");
+                }
+
+                a->observer_elevation = arg_double(argv[++i]);
+d162 1
+a162 1
+                msg_error("Unknown option argv[i]");
+d167 1
+a167 29
+    // Check the -h options.
+    switch (a->num_hgt_files)
+    {
+        case 1:
+            // okay
+            break;
+
+        case 4:
+            // Expect 2 3
+            //        0 1
+            if (a->longitude[0] == a->longitude[2] &&
+                a->longitude[1] == a->longitude[3] &&
+                a->latitude[0]  == a->latitude[1] &&
+                a->latitude[2]  == a->latitude[3] &&
+                a->longitude[0] + 1 == a->longitude[1] &&
+                a->latitude[0] + 1  == a->latitude[2])
+            {
+                // okay
+            }
+            else
+            {
+                msg_error ("four HGT files must be ordered lower-left, lower-eight, upper-left, upper-right");
+            }
+            break;
+
+        default:
+            msg_error ("must specify one or four -h options");
+            break;
+    }
+d177 11
+d190 2
+d193 9
+a201 3
+    ARGS    a;
+
+    check_args(argc, argv, &a);
+d203 3
+a205 6
+    srtm = srtm_malloc(a.filename_hgt,
+                       a.longitude,
+                       a.latitude,
+                       a.num_hgt_files);
+
+    srtm_fix_elevations(srtm);
+d207 1
+d209 2
+a210 4
+                     a.window_lon_minutes_min / 60.0,
+                     a.window_lon_minutes_max / 60.0,
+                     a.window_lat_minutes_min / 60.0,
+                     a.window_lat_minutes_max / 60.0,
+d218 1
+a218 1
+    if (a.filename_heights_bmp != NULL)
+d221 1
+a221 3
+        bmp_srtm_write(srtm, a.filename_heights_bmp,
+                       a.window_lon_minutes_min / 60.0,
+                       a.window_lat_minutes_min / 60.0,
+d230 1
+a230 1
+    if (a.filename_visibility_bmp != NULL)
+d232 1
+a232 1
+        srtm_find_viewpoint(srtm, a.viewpoint_longitude, a.viewpoint_latitude,
+d235 1
+a235 5
+        // Elevate the observer.
+        srtm->h[viewpoint_i][viewpoint_j] += a.observer_elevation;
+
+        cvis_wang_malloc(&v, &z, srtm, viewpoint_i, viewpoint_j, h_max,
+                         a.radius_max);
+d237 1
+a237 3
+        bmp_cvis_wang_write(v, a.filename_visibility_bmp,
+                       a.window_lon_minutes_min / 60.0,
+                       a.window_lat_minutes_min / 60.0,
+d244 1
+a244 1
+    if (a.filename_cumulative_visibility_bmp != NULL)
+d252 1
+a252 1
+        c = calloc(srtm->max_index + 1, sizeof(c[0]));
+d254 1
+a254 1
+        for (i = 0; i <= srtm->max_index; ++i)
+d256 1
+a256 1
+            c[i] = calloc(srtm->max_index + 1, sizeof(int));
+d263 1
+a263 1
+                int x, y;
+d265 1
+a265 1
+                cvis_wang_malloc(&v, &z, srtm, i, j, h_max, a.radius_max);
+d270 1
+a270 1
+                for (y = window_bottom_edge; y <= window_top_edge; ++y)
+d272 1
+a272 1
+                    for (x = window_left_edge; x <= window_right_edge; ++x)
+d274 1
+a274 1
+                        if (v->visible[x][y] > 0) ++n;
+d288 1
+a288 3
+        bmp_int_array_write(c, a.filename_cumulative_visibility_bmp,
+                       a.window_lon_minutes_min / 60.0,
+                       a.window_lat_minutes_min / 60.0,
+@
+
+
+1.12
+log
+@determined where to elevate the transmitter
+@
+text
+@d1 2
+a5 1
+#include <limits.h>
+d12 24
+d55 4
+a58 1
+        "    -h infile.hst longitude latitude        read HST file for pt\n"
+a59 2
+        "    -w long_min long_max lat_min lat_max    specify window\n"
+        "    -r radius_max                           radius for cumulative visibility\n"
+d82 35
+d119 3
+a121 15
+    int         argc,
+    char      **argv,
+    char      **p_filename_hst,
+    double     *p_longitude,
+    double     *p_latitude,
+    char      **p_filename_heights_bmp,     // non-NULL if filename is given
+    double     *p_window_longitude_min,
+    double     *p_window_longitude_max,
+    double     *p_window_latitude_min,
+    double     *p_window_latitude_max,
+    char      **p_filename_visibility_bmp,  // non-NULL if filename is given
+    double     *p_viewpoint_longitude,
+    double     *p_viewpoint_latitude,
+    char      **p_filename_cumulative_visibility_bmp,   // non-NULL if fname
+    int        *p_radius_max
+d124 1
+a124 1
+    int a;
+d129 11
+a139 4
+    *p_filename_hst                         = NULL;
+    *p_filename_heights_bmp                 = NULL;
+    *p_filename_visibility_bmp              = NULL;
+    *p_filename_cumulative_visibility_bmp   = NULL;
+d142 1
+a142 1
+    *p_radius_max                           = 46340;    // assumes 32-bit ints
+d144 1
+a144 6
+    *p_window_longitude_min                 = -180.01;
+    *p_window_longitude_max                 =  180.01;
+    *p_window_latitude_min                  =  -90.01;
+    *p_window_latitude_max                  =   90.01;
+
+    for (a = 1; a < argc; ++a)
+d147 4
+a150 4
+        if (argv[a] == NULL    ||
+            argv[a][0] != '-'  ||
+            argv[a][1] == '\0' ||
+            argv[a][2] != '\0') msg_error("Expected option at %s", argv[a]);
+d152 1
+a152 1
+        switch(argv[a][1])
+d155 1
+a155 1
+                if (a + 3 >= argc)
+d157 1
+a157 1
+                    msg_error("Format is -h infile.hst longitude latitude");
+d160 9
+a168 3
+                *p_filename_hst = argv[++a];
+                *p_longitude    = arg_double(argv[++a]);
+                *p_latitude     = arg_double(argv[++a]);
+d172 1
+a172 1
+                if (a + 4 >= argc)
+d174 1
+a174 1
+                    msg_error("Format is -w longitude-min longitude-max latitude-min latitude-max");
+d177 4
+a180 4
+                *p_window_longitude_min = arg_double(argv[++a]);
+                *p_window_longitude_max = arg_double(argv[++a]);
+                *p_window_latitude_min  = arg_double(argv[++a]);
+                *p_window_latitude_max  = arg_double(argv[++a]);
+d184 1
+a184 1
+                if (a + 1 >= argc)
+d189 1
+a189 1
+                *p_filename_heights_bmp = argv[++a];
+d193 1
+a193 1
+                if (a + 3 >= argc)
+d198 3
+a200 3
+                *p_filename_visibility_bmp  = argv[++a];
+                *p_viewpoint_longitude      = arg_double(argv[++a]);
+                *p_viewpoint_latitude       = arg_double(argv[++a]);
+d204 1
+a204 1
+                if (a + 1 >= argc)
+d209 1
+a209 1
+                *p_filename_cumulative_visibility_bmp = argv[++a];
+d213 1
+a213 1
+                if (a + 1 >= argc)
+d218 10
+a227 1
+                *p_radius_max = arg_double(argv[++a]);
+d231 1
+a231 1
+                msg_error("Unknown option argv[a]");
+d236 29
+a264 1
+    if (*p_filename_hst == NULL) msg_error ("must specify an HST file");
+a273 11
+    char   *filename_hst;
+    double  longitude;
+    double  latitude;
+    double  window_longitude_min;
+    double  window_longitude_max;
+    double  window_latitude_min;
+    double  window_latitude_max;
+    char   *filename_heights_bmp;
+    double  viewpoint_longitude;
+    double  viewpoint_latitude;
+    char   *filename_visibility_bmp;
+a275 2
+    char   *filename_cumulative_visibility_bmp;
+    int     radius_max;
+d277 3
+a279 9
+    check_args(argc, argv,
+               &filename_hst, &longitude, &latitude, 
+               &filename_heights_bmp,
+               &window_longitude_min, &window_longitude_max,
+               &window_latitude_min, &window_latitude_max,
+               &filename_visibility_bmp,
+               &viewpoint_longitude, &viewpoint_latitude,
+               &filename_cumulative_visibility_bmp,
+               &radius_max);
+d281 6
+a286 3
+    srtm = srtm_malloc(filename_hst, longitude, latitude);
+    //srtm = srtm_malloc(W123N37, -123, 37);
+    //srtm = srtm_malloc(W123N36, -123, 36);
+a287 1
+//    srtm_fix_elevations(srtm);
+d289 4
+a292 2
+                     window_longitude_min, window_longitude_max,
+                     window_latitude_min,  window_latitude_max,
+d300 1
+a300 1
+    if (filename_heights_bmp != NULL)
+d303 3
+a305 1
+        bmp_srtm_write(srtm, filename_heights_bmp,
+d314 1
+a314 1
+    if (filename_visibility_bmp != NULL)
+d316 1
+a316 1
+        srtm_find_viewpoint(viewpoint_longitude, viewpoint_latitude,
+d319 5
+a323 3
+        // Here's where to elevate the transmitter.
+        //srtm->h[viewpoint_i][viewpoint_j] += 10;
+        cvis_wang_malloc(&v, &z, srtm, viewpoint_i, viewpoint_j, radius_max);
+d325 3
+a327 1
+        bmp_cvis_wang_write(v, filename_visibility_bmp,
+d334 1
+a334 1
+    if (filename_cumulative_visibility_bmp != NULL)
+d342 1
+a342 1
+        c = calloc(MAX_INDEX + 1, sizeof(c[0]));
+d344 1
+a344 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d346 1
+a346 1
+            c[i] = calloc(MAX_INDEX + 1, sizeof(int));
+d353 1
+a353 1
+                int a, b;
+d355 1
+a355 1
+                cvis_wang_malloc(&v, &z, srtm, i, j, radius_max);
+d360 1
+a360 1
+                for (b = window_bottom_edge; b <= window_top_edge; ++b)
+d362 1
+a362 1
+                    for (a = window_left_edge; a <= window_right_edge; ++a)
+d364 1
+a364 1
+                        if (v->visible[a][b] > 0) ++n;
+d378 3
+a380 1
+        bmp_int_array_write(c, filename_cumulative_visibility_bmp,
+@
+
+
+1.11
+log
+@limit maximum radius to sqrt(MAX_INT) instead of MAX_INT to avoid
+overflow
+@
+text
+@d238 2
+@
+
+
+1.10
+log
+@added radius check
+@
+text
+@d84 4
+a87 1
+    *p_radius_max                           = INT_MAX;
+@
+
+
+1.9
+log
+@reuse z array to avoid stressing memory management
+@
+text
+@d33 1
+d71 2
+a72 1
+    char      **p_filename_cumulative_visibility_bmp    // non-NULL if fname
+d79 10
+a88 10
+    *p_filename_hst             = NULL;
+    *p_filename_heights_bmp     = NULL;
+    *p_filename_visibility_bmp  = NULL;
+    *p_filename_cumulative_visibility_bmp = NULL;
+
+    // Assume no window limits.
+    *p_window_longitude_min = -180.01;
+    *p_window_longitude_max =  180.01;
+    *p_window_latitude_min  =  -90.01;
+    *p_window_latitude_max  =   90.01;
+d152 9
+d191 1
+d200 2
+a201 1
+               &filename_cumulative_visibility_bmp);
+d235 1
+a235 1
+        cvis_wang_malloc(&v, &z, srtm, viewpoint_i, viewpoint_j);
+d265 1
+a265 1
+                cvis_wang_malloc(&v, &z, srtm, i, j);
+@
+
+
+1.8
+log
+@aadded cumulative visibility -C option
+(memory efficiency needs work, however)
+@
+text
+@d4 1
+d15 1
+d20 1
+a20 1
+    cvis_wang_free(&v);
+d34 1
+d207 1
+d222 1
+a222 1
+        cvis_wang_malloc(&v, srtm, viewpoint_i, viewpoint_j);
+d235 4
+d252 1
+a252 1
+                cvis_wang_malloc(&v, srtm, i, j);
+d266 3
+d275 7
+a281 5
+//        bmp_cvis_wang_write(v, filename_visibility_bmp,
+//                       window_left_edge,
+//                       window_right_edge,
+//                       window_bottom_edge,
+//                       window_top_edge);
+@
+
+
+1.7
+log
+@reworked command-line options
+@
+text
+@d66 2
+a67 1
+    double     *p_viewpoint_latitude
+d77 1
+d101 3
+a103 4
+                *p_filename_hst = argv[a + 1];
+                *p_longitude    = arg_double(argv[a + 2]);
+                *p_latitude     = arg_double(argv[a + 3]);
+                a += 3;
+d112 4
+a115 5
+                *p_window_longitude_min = arg_double(argv[a + 1]);
+                *p_window_longitude_max = arg_double(argv[a + 2]);
+                *p_window_latitude_min  = arg_double(argv[a + 3]);
+                *p_window_latitude_max  = arg_double(argv[a + 4]);
+                a += 4;
+d124 1
+a124 2
+                *p_filename_heights_bmp = argv[a + 1];
+                a += 1;
+d133 12
+a144 4
+                *p_filename_visibility_bmp  = argv[a + 1];
+                *p_viewpoint_longitude      = arg_double(argv[a + 2]);
+                *p_viewpoint_latitude       = arg_double(argv[a + 3]);
+                a += 3;
+d160 1
+d176 1
+d184 2
+a185 1
+               &viewpoint_longitude, &viewpoint_latitude);
+d217 2
+a218 1
+        v = cvis_wang_malloc(srtm, viewpoint_i, viewpoint_j);
+d227 44
+@
+
+
+1.6
+log
+@fleshed out main()
+@
+text
+@d1 1
+d3 2
+d9 1
+d23 1
+a23 1
+void error(const char *message)
+d25 10
+a34 2
+    fprintf(stderr, "Error: %s\n", message);
+    exit(1);
+d40 1
+a40 1
+    const char *suffix;
+d44 1
+a44 1
+    if (suffix == s || *suffix == '\0')
+d46 1
+a46 1
+        error("expected floating-point parameter");
+d54 13
+a66 6
+    int             argc,
+    char          **argv,
+    const char    **p_filename_hst,
+    double         *p_longitude,
+    double         *p_latitude,
+    const char    **p_filename_bmp
+d69 15
+a83 1
+    if (argc != 5)
+d85 59
+a143 4
+        fprintf(stderr,
+            "Usage: visibility infile.hst longitude latitude outfile.bmp\n");
+
+        exit(0);
+d146 1
+a146 4
+    *p_filename_hst = argv[1];
+    *p_longitude    = arg_double(argv[2]);
+    *p_latitude     = arg_double(argv[3]);
+    *p_filename_bmp = argv[4];
+d153 3
+a155 3
+    int     i_min, i_max;
+    int     j_min, j_max;
+    char   *filename.hst;
+d158 10
+a167 1
+    char   *filename.bmp;
+d170 6
+a175 1
+               &filename_hst, &longitude, &latitude, &filename_bmp);
+d177 2
+a178 1
+    srtm = srtm_malloc(W123N37, -123, 37);
+d182 6
+a187 2
+    srtm_find_elevation_limits(srtm, -180.01, 180.01, -90.01, 90.01,
+                               &h_min, &h_max, &i_min, &i_max, &j_min, &j_max);
+d189 2
+a190 2
+    //srtm_find_elevation_limits(srtm, -122.069, -122.048, 36.977, 37.004,
+    //                           &h_min, &h_max, &i_min, &i_max, &j_min, &j_max);
+d192 10
+a201 1
+//    v = cvis_wang_malloc(srtm, 3064, 417);
+d203 12
+a214 3
+    bmp_srtm_write(srtm, filename.bmp,
+                   h_min, h_max, i_min, i_max, j_min, j_max);
+    //bmp_cvis_wang_write(v, filename.bmp, i_min, i_max, j_min, j_max);
+@
+
+
+1.5
+log
+@consider boundaries when writing BMPs
+@
+text
+@d7 42
+a48 1
+int main()
+d50 27
+a76 8
+    SRTM_TILE  *srtm;
+    CVIS_WANG  *v;
+    int        h_min;
+    int        h_max;
+    int        i_min;
+    int        i_max;
+    int        j_min;
+    int        j_max;
+d81 1
+a81 1
+    srtm_fix_elevations(srtm);
+d88 1
+a88 4
+    v = cvis_wang_malloc(srtm, 3064, 417);
+
+    //bmp_srtm_write(srtm, "big.bmp", h_min, h_max, i_min, i_max, j_min, j_max);
+    bmp_cvis_wang_write(v, "big.bmp", i_min, i_max, j_min, j_max);
+d90 3
+a92 2
+    cvis_wang_free(v);
+    srtm_free(srtm);
+d94 1
+d97 1
+@
+
+
+1.4
+log
+@include bmp.h
+@
+text
+@d1 1
+d11 6
+d18 2
+a19 2
+    srtm = srtm_malloc(N37W123, 37, -123);
+    v    = cvis_wang_malloc(srtm, 3064, 417);
+d21 11
+a31 1
+    bmp_srtm_write(srtm, "big.bmp");
+@
+
+
+1.3
+log
+@SRTM_CUMULATIVE_VISIBILITY --> CVIS_WANG
+write BMP
+@
+text
+@d3 1
+@
+
+
+1.2
+log
+@rename to srtm_cumulative_visibility_malloc
+@
+text
+@d2 1
+d7 2
+a8 2
+    SRTM_TILE                  *srtm;
+    SRTM_CUMULATIVE_VISIBILITY *v;
+d11 1
+a11 1
+    v    = srtm_cumulative_visibility_malloc(srtm, 3064, 417);
+d13 3
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d10 1
+a10 1
+    v    = srtm_cumulative_visibility(srtm, 3064, 417);
+@

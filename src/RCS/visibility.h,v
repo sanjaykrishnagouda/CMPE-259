@@ -1,0 +1,87 @@
+head	1.4;
+access;
+symbols
+	ver1_2:1.4
+	ver1_12:1.4
+	ver1_11:1.4
+	ver1_1:1.4
+	ver1_03:1.3
+	ver1_02:1.2
+	v1_01:1.1
+	v1_0:1.1
+	beta1:1.1;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2011.11.11.08.32.22;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.10.30.04.23.01;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.10.27.23.09.49;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.08.05.17.09.23;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@constant for visibility.c
+@
+
+
+1.4
+log
+@converted to C++
+@
+text
+@#define MAX_NUM_VIEWPOINTS  100
+
+extern "C" SRTM_TILE  *srtm;
+extern "C" CVIS_WANG  *v;
+extern "C" int       **z;
+
+@
+
+
+1.3
+log
+@added externs for strm, v, and z
+@
+text
+@d3 3
+a5 3
+extern  SRTM_TILE  *srtm;
+extern  CVIS_WANG  *v;
+extern  int       **z;
+@
+
+
+1.2
+log
+@support multiple viewpoints
+@
+text
+@d2 5
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 1
+a1 1
+#define MAX_HGT_FILES   4
+@

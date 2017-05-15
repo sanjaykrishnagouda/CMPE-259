@@ -1,0 +1,1 @@
+msg.o: msg.cpp msg.h

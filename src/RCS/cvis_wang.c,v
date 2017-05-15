@@ -1,0 +1,759 @@
+head	1.11;
+access;
+symbols
+	ver1_2:1.11
+	ver1_12:1.11
+	ver1_11:1.11
+	ver1_1:1.11
+	ver1_03:1.11
+	ver1_02:1.10
+	v1_01:1.10
+	v1_0:1.9
+	beta1:1.8;
+locks; strict;
+comment	@ * @;
+
+
+1.11
+date	2011.10.30.04.22.23;	author kerryveenstra;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2011.10.26.21.18.21;	author kerryveenstra;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2011.10.26.06.13.45;	author kerryveenstra;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.10.26.01.11.24;	author kerryveenstra;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.08.05.16.21.15;	author kerryveenstra;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.06.30.05.36.56;	author kerryveenstra;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.05.05.04.53.55;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.05.01.01.56.29;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.04.29.21.28.33;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.15.21.58;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.25.11.04.34;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@Wang's cumulative-visibility algorithm
+@
+
+
+1.11
+log
+@added cvis_wang_malloc_count()
+@
+text
+@// -------------------------------------------------------------------------
+//
+// File:        cvis_wang.c
+//
+// Purpose:     This file defines routines that create and free
+//              terrain-visibility data.
+//
+// Reference:   This file's algorithm is found in the following paper.
+//              This program's variable names are inspired by the paper's
+//              equations.
+//
+//              @@article{Wang:2000a,
+//                author = {Jianjun Wang and Gary J. Robinson and Kevin White},
+//                title = {Generating Viewsheds without Using Sightlines},
+//                journal = {Photogrammetric Engineering \& Remote Sensing},
+//                year = {2000},
+//                volume = {66},
+//                number = {1},
+//                pages = {87--90},
+//                month = {January}
+//              }
+//
+// -------------------------------------------------------------------------
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "srtm.h"
+#include "cvis_wang.h"
+
+#define max(a, b)     ((a) > (b) ? (a) : (b))
+
+#if 0
+#define TRACE(FILE, LINE) \
+{printf("%s(%d)\n", FILE, LINE); fflush(stdout);}
+
+#define TRACE_sd(FILE, LINE, STRING, INTEGER) \
+{printf("%s(%d) %s%d\n", FILE, LINE, STRING, INTEGER); fflush(stdout);}
+
+#define TRACE_sp(FILE, LINE, STRING, POINTER) \
+{printf("%s(%d) %s%p\n", FILE, LINE, STRING, POINTER); fflush(stdout);}
+#else
+#define TRACE(FILE, LINE)
+#define TRACE_sd(FILE, LINE, STRING, INTEGER)
+#define TRACE_sp(FILE, LINE, STRING, POINTER)
+#endif
+
+
+// Octants:
+//
+//           \  3 | 2  /
+//             \  |  /
+//           4   \|/   1
+//           -----------
+//           5   /|\   8
+//             /  |  \
+//           /  6 | 7  \
+//
+void cvis_wang_malloc
+(
+    CVIS_WANG **pv,     // pointer to cache of visibility struct
+    int      ***pz,     // pointer to cache of heights (yes, *** is correct)
+    SRTM_TILE  *srtm,
+    int         num_viewpoints,
+    int        *pii,    // pointer to viewpoints' horizontal pixel coordinates
+    int        *pjj,    // pointer to viewpoints' vertical pixel coordinates
+    int         radius_max  // maximum radius limited view
+)
+{
+    int         a;
+    int         b;
+    int         base_elevation;
+    int         di;
+    int         dj;
+    int16_t   **h;
+    int         i;
+    int         ii;
+    int         j;
+    int         jj;
+    CVIS_WANG  *v;
+    int         viewpoint;
+    char      **visible;
+    int       **z;
+
+    int         radius_max_squared = radius_max * radius_max;
+
+    // Allocate the caches, if necessary, and then clear them.
+    if (*pv == NULL)
+    {
+        *pv = calloc(sizeof(**pv), 1);
+    }
+    
+    v = *pv;
+    v->origin_lon_deg = srtm->origin_lon_deg;
+    v->origin_lat_deg = srtm->origin_lat_deg;
+    visible = v->visible;
+    h = srtm->h;
+
+    for (i = 0; i <= MAX_INDEX; ++i)
+    {
+        if (visible[i] == NULL) 
+        {
+            visible[i] = calloc(sizeof(visible[i][0]), MAX_INDEX + 1);
+        }
+        else
+        {
+            // Try to clear the cache values as quickly as possible.
+            // This operation is a large part of execution time.
+            memset(visible[i], 0, sizeof(visible[i][0]) * (MAX_INDEX + 1));
+        }
+    }
+
+
+    if (*pz == NULL)
+    {
+        *pz = malloc((MAX_INDEX + 1) * sizeof(z[0]));
+    }
+
+    z = *pz;
+
+    for (i = 0; i <= MAX_INDEX; ++i)
+    {
+        if (z[i] == NULL)
+        {
+            z[i] = calloc(sizeof(z[i][0]), MAX_INDEX + 1);
+        }
+        else
+        {
+            // Try to clear the cache values as quickly as possible.
+            // This operation is a large part of execution time.
+            memset(z[i], 0, sizeof(z[i][0]) * (MAX_INDEX + 1));
+        }
+    }
+
+
+    for (viewpoint = 0; viewpoint < num_viewpoints; ++viewpoint)
+    {
+        ii = pii[viewpoint];
+        jj = pjj[viewpoint];
+
+        base_elevation = h[ii][jj];
+
+        // Count the first points.
+        for (i = ii - 1; i <= ii + 1; ++i)
+        {
+            for (j = jj - 1; j <= jj + 1; ++j)
+            {
+                if (0 <= i && i <= MAX_INDEX &&
+                    0 <= j && j <= MAX_INDEX)
+                {
+                    z[i][j]         = h[i][j] - base_elevation;
+                    visible[i][j]   = 1;
+                }
+            }
+        }
+
+
+#define OCTANT 1
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 2
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 3
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 4
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 5
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 6
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 7
+#include "cvis_wang.i"
+#undef OCTANT
+
+#define OCTANT 8
+#include "cvis_wang.i"
+#undef OCTANT
+
+    }
+}
+
+
+int cvis_wang_malloc_count
+(
+    CVIS_WANG **pv,
+    int      ***pz,
+    SRTM_TILE  *srtm,
+    int         num_viewpoints,
+    int        *pii,
+    int        *pjj,
+    int         radius_max,
+    int         window_bottom_edge,
+    int         window_top_edge,
+    int         window_left_edge,
+    int         window_right_edge
+)
+{
+    int a;
+    int b;
+
+    int n = 0;
+
+    // Determine which pixels are visible.
+    cvis_wang_malloc(pv, pz, srtm, num_viewpoints, pii, pjj, radius_max);
+
+
+    // Count the number of visible pixels.
+    for (b = window_bottom_edge; b <= window_top_edge; ++b)
+    {
+        for (a = window_left_edge; a <= window_right_edge; ++a)
+        {
+            if ((*pv)->visible[a][b] > 0) ++n;
+        }
+    }
+
+    return n;
+}
+
+
+void cvis_wang_free
+(
+    CVIS_WANG **pv,
+    int      ***pz
+)
+{
+    int i;
+
+    if (pv != NULL && *pv != NULL)
+    {
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            if ((*pv)->visible[i] != NULL) free((*pv)->visible[i]);
+        }
+
+        free(*pv);
+        *pv = NULL;
+    }
+
+    if (pz != NULL && *pz != NULL)
+    {
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            if ((*pz)[i] != NULL) free((*pz)[i]);
+        }
+
+        free(*pz);
+        *pz = NULL;
+    }
+}
+
+
+@
+
+
+1.10
+log
+@cvis_wang_malloc() now takes a list of viewpoints.
+@
+text
+@d195 37
+@
+
+
+1.9
+log
+@clear the caches before using their values.
+@
+text
+@d65 3
+a67 2
+    int         ii,     // viewpoint's horizontal pixel
+    int         jj,     // viewpoint's vertical pixel
+d78 1
+d80 1
+d82 1
+d95 4
+d102 1
+a102 1
+        if (v->visible[i] == NULL) 
+d104 1
+a104 1
+            v->visible[i] = calloc(sizeof(v->visible[i][0]), MAX_INDEX + 1);
+d110 1
+a110 1
+            memset(v->visible[i], 0, sizeof(v->visible[i][0]) * (MAX_INDEX + 1));
+d137 4
+a140 6
+    // Use the caches.
+    v       = *pv;
+    z       = *pz;
+    h       = srtm->h;
+    visible = v->visible;
+    base_elevation = h[ii][jj];
+d142 1
+a142 3
+    // Record the origin.
+    v->origin_lon_deg = srtm->origin_lon_deg;
+    v->origin_lat_deg = srtm->origin_lat_deg;
+d144 2
+a145 4
+    // Count the first points.
+    for (i = ii - 1; i <= ii + 1; ++i)
+    {
+        for (j = jj - 1; j <= jj + 1; ++j)
+d147 1
+a147 2
+            if (0 <= i && i <= MAX_INDEX &&
+                0 <= j && j <= MAX_INDEX)
+d149 6
+a154 2
+                z[i][j]         = h[i][j] - base_elevation;
+                visible[i][j]   = 1;
+a156 1
+    }
+d191 1
+@
+
+
+1.8
+log
+@reverting to version as of 2011/07/17
+@
+text
+@d28 1
+d84 1
+a84 1
+    // If necessary, allocate the caches.
+d87 4
+a90 1
+        v = malloc(sizeof(*v));
+d92 7
+a98 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d100 3
+a102 1
+            v->visible[i] = malloc((MAX_INDEX + 1) * sizeof(v->visible[i][0]));
+d104 1
+a105 2
+        *pv = v;
+    }
+d109 2
+a110 1
+        z = malloc((MAX_INDEX + 1) * sizeof(z[0]));
+d112 9
+a120 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d122 3
+a124 1
+            z[i] = malloc((MAX_INDEX + 1) * sizeof(z[i][0]));
+d126 1
+a127 2
+        *pz = z;
+    }
+d140 1
+a140 1
+    // first points
+@
+
+
+1.7
+log
+@support four HGT files
+added octant variable to aid debugging
+@
+text
+@a25 1
+#include <stddef.h>
+a31 1
+#define min(a, b)     ((a) < (b) ? (a) : (b))
+a65 1
+    int         h_max,
+a76 1
+    int         octant;
+a81 1
+    int         max_index = srtm->max_index;
+d84 1
+a84 1
+    if (*pz == NULL)
+d86 1
+a86 1
+        z = malloc((max_index + 1) * sizeof(z[0]));
+d88 1
+a88 1
+        for (i = 0; i <= max_index; ++i)
+d90 1
+a90 1
+            z[i] = malloc((max_index + 1) * sizeof(z[i][0]));
+d93 1
+a93 1
+        *pz = z;
+d96 1
+a96 1
+    if (*pv == NULL)
+d98 1
+a98 2
+        v = malloc(offsetof(CVIS_WANG, visible) +
+                   ((max_index + 1) * sizeof(v->visible[0])));
+d100 1
+a100 1
+        for (i = 0; i <= max_index; ++i)
+d102 1
+a102 1
+            v->visible[i] = malloc((max_index + 1) * sizeof(v->visible[i][0]));
+d105 1
+a105 3
+        v->max_index = max_index;
+
+        *pv = v;
+d124 2
+a125 2
+            if (0 <= i && i <= max_index &&
+                0 <= j && j <= max_index)
+d133 1
+a133 1
+    octant = 1;
+a137 1
+    ++octant;
+a141 1
+    ++octant;
+a145 1
+    ++octant;
+a149 1
+    ++octant;
+a153 1
+    ++octant;
+a157 1
+    ++octant;
+a161 1
+    ++octant;
+d177 1
+a177 1
+    if (pz != NULL && *pz != NULL)
+d179 1
+a179 1
+        for (i = 0; i <= (*pv)->max_index; ++i)
+d181 1
+a181 1
+            if ((*pz)[i] != NULL) free((*pz)[i]);
+d184 2
+a185 2
+        free(*pz);
+        *pz = NULL;
+d188 1
+a188 1
+    if (pv != NULL && *pv != NULL)
+d190 1
+a190 1
+        for (i = 0; i <= (*pv)->max_index; ++i)
+d192 1
+a192 1
+            if ((*pv)->visible[i] != NULL) free((*pv)->visible[i]);
+d195 2
+a196 2
+        free(*pv);
+        *pv = NULL;
+@
+
+
+1.6
+log
+@added header comment
+added radius_max
+added radius_max_squared
+@
+text
+@d26 1
+d33 1
+d68 1
+d80 1
+d86 1
+d89 1
+a89 1
+    if (*pv == NULL)
+d91 1
+a91 1
+        v = malloc(sizeof(*v));
+d93 1
+a93 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d95 1
+a95 1
+            v->visible[i] = malloc((MAX_INDEX + 1) * sizeof(v->visible[i][0]));
+d98 1
+a98 1
+        *pv = v;
+d101 1
+a101 1
+    if (*pz == NULL)
+d103 2
+a104 1
+        z = malloc((MAX_INDEX + 1) * sizeof(z[0]));
+d106 1
+a106 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d108 1
+a108 1
+            z[i] = malloc((MAX_INDEX + 1) * sizeof(z[i][0]));
+d111 3
+a113 1
+        *pz = z;
+d132 2
+a133 2
+            if (0 <= i && i <= MAX_INDEX &&
+                0 <= j && j <= MAX_INDEX)
+d141 1
+a141 1
+
+d146 1
+d151 1
+d156 1
+d161 1
+d166 1
+d171 1
+d176 1
+d192 1
+a192 1
+    if (pv != NULL && *pv != NULL)
+d194 1
+a194 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d196 1
+a196 1
+            if ((*pv)->visible[i] != NULL) free((*pv)->visible[i]);
+d199 2
+a200 2
+        free(*pv);
+        *pv = NULL;
+d203 1
+a203 1
+    if (pz != NULL && *pz != NULL)
+d205 1
+a205 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d207 1
+a207 1
+            if ((*pz)[i] != NULL) free((*pz)[i]);
+d210 2
+a211 2
+        free(*pz);
+        *pz = NULL;
+@
+
+
+1.5
+log
+@reuse z array to avoid stressing memory management.
+@
+text
+@d1 25
+d65 2
+a66 1
+    int         jj      // viewpoint's vertical pixel
+d81 2
+@
+
+
+1.4
+log
+@added comment
+@
+text
+@d34 1
+a34 1
+CVIS_WANG *cvis_wang_malloc
+d36 2
+d53 1
+a53 1
+    int        *z[MAX_INDEX + 1];
+d55 12
+a66 3
+    v = malloc(sizeof(*v));
+    v->origin_lon_deg = srtm->origin_lon_deg;
+    v->origin_lat_deg = srtm->origin_lat_deg;
+d68 1
+a68 1
+    for (i = 0; i <= MAX_INDEX; ++i)
+d70 8
+a77 2
+        z[i]            = malloc((MAX_INDEX + 1) * sizeof(z[i][0]));
+        v->visible[i]   = malloc((MAX_INDEX + 1) * sizeof(v->visible[i][0]));
+d80 3
+d85 1
+d87 3
+a89 1
+    base_elevation = h[ii][jj];
+a137 2
+
+    return v;
+d141 5
+a145 1
+void cvis_wang_free (CVIS_WANG **p_v)
+d149 12
+a160 1
+    if (p_v != NULL && *p_v != NULL)
+d164 1
+a164 1
+            if ((*p_v)->visible[i] != NULL) free((*p_v)->visible[i]);
+d167 2
+a168 2
+        free(*p_v);
+        *p_v = NULL;
+@
+
+
+1.3
+log
+@memory-freeing functions now take pointer to pointer
+@
+text
+@d37 2
+a38 2
+    int         ii,
+    int         jj
+@
+
+
+1.2
+log
+@z --> visible
+correct spelling of origin
+@
+text
+@d46 1
+a46 1
+    INT16     **h;
+d120 1
+a120 1
+void cvis_wang_free (CVIS_WANG *v)
+d124 1
+a124 1
+    for (i = 0; i <= MAX_INDEX; ++i)
+d126 7
+a132 1
+        free(v->visible[i]);
+a133 2
+
+    free(v);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d50 2
+a51 1
+    INT32       **z;
+d55 1
+a55 1
+    v->origon_lat_deg = srtm->origon_lat_deg;
+d59 2
+a60 1
+        v->z[i] = malloc((MAX_INDEX + 1) * sizeof(v->z[i][0]));
+d63 2
+a64 2
+    h = srtm->h;
+    z = v->z;
+d76 2
+a77 1
+                z[i][j] = h[i][j] - base_elevation;
+d126 1
+a126 1
+        free(v->z[i]);
+@

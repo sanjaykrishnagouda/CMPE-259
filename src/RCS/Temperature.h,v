@@ -1,0 +1,95 @@
+head	1.3;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	2013.06.14.02.44.02;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2013.03.28.17.03.00;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.02.19.09.00.47;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@header for Temperature
+@
+
+
+1.3
+log
+@improved comments
+@
+text
+@/**************************************************************************
+
+File:           Temperature.h
+
+Class:          Temperature
+
+Description:    This object holds a temperature value for a simulated
+                annealing algorithm.  It includes methods to compute the
+                next temperature step.
+
+                One method follows the basic rule
+
+                    T_next = T * alpha
+
+                where alpha < 1.0.
+                
+                The other method is more complicated and considers the
+                standard deviation of the utility function.
+
+Methods:        current()
+                next_simple()
+                next_huang()
+
+**************************************************************************/
+
+class Temperature
+{
+public:
+    Temperature()                       {T = 0.0;}
+    Temperature(double T_initial)       {T = T_initial;}
+    double current()                    {return T;}
+    void next_simple(double alpha)      {T *= alpha;}
+    void next_huang(double lambda, Statistics stats_utility);
+private:
+    double T;
+};
+
+
+@
+
+
+1.2
+log
+@Added default constructor.
+@
+text
+@d1 25
+a25 4
+//  Class:          Temperature
+//
+//  Description:    ...
+//
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d8 1
+@

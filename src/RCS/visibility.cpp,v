@@ -1,0 +1,1411 @@
+head	1.14;
+access;
+symbols
+	ver1_2:1.5
+	ver1_12:1.4
+	ver1_11:1.3
+	ver1_1:1.1;
+locks
+	kerryveenstra:1.14; strict;
+comment	@// @;
+
+
+1.14
+date	2014.01.27.21.46.20;	author kerryveenstra;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2013.07.22.22.16.39;	author kerryveenstra;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2013.07.21.03.49.41;	author kerryveenstra;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2013.07.17.01.07.23;	author kerryveenstra;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2013.07.12.20.25.03;	author kerryveenstra;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2013.03.28.17.04.13;	author kerryveenstra;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2013.02.24.08.35.15;	author kerryveenstra;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2013.02.19.08.59.12;	author kerryveenstra;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2013.02.18.02.31.53;	author kerryveenstra;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.12.07.07.49.09;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.11.18.06.01.57;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.11.16.06.03.50;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.11.16.03.10.39;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.11.11.08.31.19;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@cumulative visibility routines
+@
+
+
+1.14
+log
+@added viewpoint height
+@
+text
+@#include <limits>
+#include <string>
+#include <vector>
+
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+extern "C"
+{
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "bmp.h"
+#include "data.h"
+#include "msg.h"
+#include "visibility.h"
+}
+
+using std::string;
+using std::vector;
+
+#include "ge.h"
+#include "Args.h"
+#include "Statistics.h"
+#include "Disk.h"
+#include "State.h"
+#include "pg.h"
+
+extern "C"
+{
+#include "grd.h"
+#include "sa.h"
+}
+
+#define SQRT_INT_MAX    46340   // SQRT_INT_MAX^2 fits in a 32-bit int
+
+
+// TODO move these global variables into a CVIS object
+SRTM_TILE  *srtm = NULL;
+CVIS_WANG  *v    = NULL;
+int       **z    = NULL;
+
+
+void cleanup(void)
+{
+    cvis_wang_free(&v, &z);
+    srtm_free(&srtm);
+}
+
+
+void create_txt_file(string filename, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    printf("create_txt_file(%s, %s)\n", filename.c_str(), format);
+
+    if (!filename.empty())
+    {
+        printf("filename is not empty\n");
+
+        FILE *f = fopen(filename.c_str(), "w");
+
+        if (f == NULL)
+        {
+            printf("Can't create %s\n", filename.c_str());
+            exit(1);
+        }
+
+        vfprintf(f, format, args);
+        fclose(f);
+    }
+
+    va_end(args);
+}
+
+
+void usage_init(Args &args)
+{
+    args.define_usage(
+        "Usage: visibility [options]\n"
+        "Options:\n"
+        "    -hst infile.hst                        HST input file\n"
+        "    -hst-latlon latitude longitude         position of HST file\n"
+        "    -bmp outfile.bmp                       BMP output file\n"
+        "    -bmp-sequence basename                 sequence of BMPs\n"
+        "    -txt outfile.txt                       TXT output file\n"
+        "    -w lat_min lon_min lat_max lon_max     window\n"
+        "    -v latitude longitude                  viewpoint\n"
+        "    -vrand num_rand_viewpoints             random viewpoints\n"
+        "    -vh viewpoint_height_above_terrain     same units as HST file\n"
+        "    -r radius_max                          radius for cumulative visibility\n"
+        "    -s unsigned_seed                       init random number generator\n"
+        "    -V                                     compute visibility\n"
+        "    -C                                     compute cumulative visibility\n"
+        "    -H                                     write heights BMP\n"
+        "Gradient Ascent options:\n"
+        "    -G method                              compute results of gradient ascent\n"
+        "    -v longitude latitude                  viewpoint(s)\n"
+        "    -t num_iterations                      number of iterations\n"
+        "    -delta pattern_search_delta            integer\n"
+        "Simulated Annealing options:\n"
+        "    -S                                     compute results of S.A.\n"
+        "    -v longitude latitude                  viewpoint(s)\n"
+        "    -T                                     initial temperature\n"
+        "    -M                                     initial iterations at temp\n"
+        "    -a                                     alpha\n"
+        "    -b                                     beta\n"
+        "    -l                                     lambda\n"
+        "    -d                                     dist_max\n"
+        "    -t                                     max_time\n"
+        "    -Sd                                    use distributed algorithm\n"
+        "    -er                                    exploration radius\n"
+        "    -cr                                    communication radius\n"
+        "Potential Games options:\n"
+        "    -P                                     compute results of P.G.\n"
+        "    -b                                     beta\n"
+        "    -d                                     dist_max\n"
+        "    -t                                     max_time\n"
+        );
+}
+
+
+int main(int argc, char **argv)
+{
+    Args args;
+
+    usage_init(args);
+
+    // Required parameters.
+    // Check their requirements farther below.
+    string              filename_hst;
+    vector<ArgLatlon>   latlon_hst;
+    string              filename_bmp;
+
+    args.define("-hst", &filename_hst);
+    args.define_latlon("-hst-latlon", &latlon_hst);
+    args.define("-bmp", &filename_bmp);
+
+    // Optional parameters
+    vector<ArgLatlon>   viewpoints;
+    int                 num_rand_viewpoints;
+    int                 viewpoint_height_above_terrain;
+    bool                write_heights_bmp;
+    bool                write_visibility_bmp;
+    bool                compute_cumulative_visibility;
+    int                 radius_max;
+    int                 exploration_radius_max;
+    int                 communication_radius_max;
+    bool                use_distributed_algorithm;
+    vector<ArgLatlon>   window;
+    bool                optimize_pg;
+    bool                optimize_sa;
+    int                 temp_initial;
+    int                 M_initial;
+    int                 dist_max;
+    double              alpha;
+    double              beta;
+    double              lambda;
+    int                 num_iterations;
+    int                 gradient_ascent_method;
+    int                 delta;
+    int                 srand_value;
+    string              filename_txt;
+    string              bmp_sequence_basename;
+
+
+    args.define_latlon_vector("-v", &viewpoints);
+    args.define("-vrand", &num_rand_viewpoints);
+    args.define("-vh", &viewpoint_height_above_terrain);
+    args.define("-H", &write_heights_bmp),
+    args.define("-V", &write_visibility_bmp);
+    args.define("-C", &compute_cumulative_visibility);
+    args.define("-r", &radius_max,                  SQRT_INT_MAX);
+    args.define("-er", &exploration_radius_max,     SQRT_INT_MAX);
+    args.define("-cr", &communication_radius_max,   SQRT_INT_MAX);
+    args.define("-Sd", &use_distributed_algorithm),
+    args.define_window("-w", &window,       -90.01, -180.01, 90.01, 180.01);
+    args.define("-P", &optimize_pg);
+    args.define("-S", &optimize_sa);
+    args.define("-T", &temp_initial);
+    args.define("-t", &num_iterations);
+    args.define("-M", &M_initial,           10);
+    args.define("-a", &alpha,               0.9);
+    args.define("-b", &beta,                1.0);
+    args.define("-l", &lambda,              0.7);
+    args.define("-d", &dist_max,            10);
+    args.define("-G", &gradient_ascent_method);
+    args.define("-delta", &delta);
+    args.define("-s", &srand_value,         1);
+    args.define("-txt", &filename_txt,      "");
+    args.define("-bmp-sequence", &bmp_sequence_basename);
+
+    args.parse(argc, argv);
+
+    // These are the required parameters.
+    if (filename_hst == "") msg_error ("must specify an HST input file");
+    if (filename_bmp == "") msg_error ("must specify an BMP output file");
+
+    int     h_min, h_max;
+    int     i, j;
+
+    int     window_left_edge, window_right_edge;
+    int     window_bottom_edge, window_top_edge;
+
+    int     num_dash_v_viewpoints;
+    int     num_viewpoints;     // total viewpoints
+    double  viewpoint_longitude[MAX_NUM_VIEWPOINTS];
+    double  viewpoint_latitude[MAX_NUM_VIEWPOINTS];
+    int     viewpoint_i[MAX_NUM_VIEWPOINTS];
+    int     viewpoint_j[MAX_NUM_VIEWPOINTS];
+    bool    viewpoint_is_active[MAX_NUM_VIEWPOINTS];
+
+    time_t  t1;     // used by loop timer; start of loop
+    time_t  t2;     // used by loop timer; end of current iteration
+    time_t  t3;     // used by loop timer; estimated completion
+    int     cumulative_visibility;
+
+printf("begin main()\n");
+    ge_srand(srand_value);
+
+    if (argc <= 1) args.print_usage();
+
+    srtm = srtm_malloc(filename_hst.c_str(),
+                       latlon_hst[0].lon, latlon_hst[0].lat);
+
+    for (auto w : window)
+    {
+        printf("    w.lat = %f\n", w.lat);
+        printf("    w.lon = %f\n", w.lon);
+    }
+
+    srtm_find_limits(srtm,
+                     window[0].lat,        window[0].lon,
+                     window[1].lat,        window[1].lon,
+                     &h_min,               &h_max,
+                     &window_left_edge,    &window_right_edge,
+                     &window_bottom_edge,  &window_top_edge);
+
+    printf("window_left_edge = %d\n"
+           "window_right_edge = %d\n"
+           "window_bottom_edge = %d\n"
+           "window_top_edge = %d\n"
+           "h_min = %d\n"
+           "h_max = %d\n",
+           window_left_edge,
+           window_right_edge,
+           window_bottom_edge,
+           window_top_edge,
+           h_min,
+           h_max);
+
+
+    // Convert the viewpoints object into i and j arrays.
+    // Also create random viewpoints.
+    // TODO Pass the viewpoints object or its reference directly.
+    num_dash_v_viewpoints = viewpoints.size();
+    num_viewpoints = num_dash_v_viewpoints + num_rand_viewpoints;
+
+    printf("num_dash_v_viewpoints = %d\n",  num_dash_v_viewpoints);
+    printf("num_rand_viewpoints = %d\n",    num_rand_viewpoints);
+    printf("num__viewpoints = %d\n",        num_viewpoints);
+
+    if (num_viewpoints >= MAX_NUM_VIEWPOINTS)
+    {
+        msg_error("Too many viewpoints.  Only %d allowed.",
+                  MAX_NUM_VIEWPOINTS);
+    }
+
+    i = 0;
+
+    for (auto pt : viewpoints)
+    {
+        srtm_find_viewpoint(pt.lon, pt.lat, &viewpoint_i[i], &viewpoint_j[i]);
+        viewpoint_is_active[i] = true;
+        printf("viewpoint lat=%f lon=%f i=%d j=%d\n",
+                pt.lat, pt.lon, viewpoint_i[i], viewpoint_j[i]);
+        ++i;
+    }
+
+    for (/* current i */ ; i < num_viewpoints; ++i)
+    {
+        viewpoint_i[i] = ge_rand_uniform_int(window_left_edge,
+                                             window_right_edge);
+        viewpoint_j[i] = ge_rand_uniform_int(window_bottom_edge,
+                                             window_top_edge);
+    }
+
+    for (i = 0; i < num_viewpoints; ++i)
+    {
+        printf("viewpoint %d = %d %d\n", i, viewpoint_i[i], viewpoint_j[i]);
+    }
+
+
+    if (write_heights_bmp)
+    {
+        printf("heights --> %s\n", filename_bmp.c_str());
+        bmp_srtm_write(srtm, filename_bmp.c_str(), 0, NULL, NULL);
+    }
+
+    if (write_visibility_bmp)
+    {
+        cvis_wang_malloc(&v, &z, srtm,
+                         num_viewpoints, viewpoint_i, viewpoint_j,
+                         viewpoint_is_active,
+                         radius_max, viewpoint_height_above_terrain);
+
+        bmp_cvis_wang_write(v, filename_bmp.c_str());
+    }
+
+    if (compute_cumulative_visibility)
+    {
+        int **c;     // cumulative visibility of each point
+
+        // Prepare to record limits of c array's values.
+        int c_min = INT_MAX;
+        int c_max = 0;
+
+        c = (int **) calloc(MAX_INDEX + 1, sizeof(c[0]));
+
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            c[i] = (int *) calloc(MAX_INDEX + 1, sizeof(int));
+        }
+
+        time(&t1);
+        printf("Start       %s", ctime(&t1));
+
+        for (j = window_bottom_edge; j <= window_top_edge; ++j)
+        {
+            for (i = window_left_edge; i <= window_right_edge; ++i)
+            {
+                int a, b;
+
+                bool is_active = true;
+
+                cvis_wang_malloc(&v, &z, srtm,
+                                 1, &i, &j, &is_active,
+                                 radius_max, viewpoint_height_above_terrain);
+
+                // count number of visible pixels
+                int n = 0;
+
+                for (b = window_bottom_edge; b <= window_top_edge; ++b)
+                {
+                    for (a = window_left_edge; a <= window_right_edge; ++a)
+                    {
+                        if (v->visible[a][b] > 0) ++n;
+                    }
+                }
+
+                c[i][j] = n;
+
+                if (n < c_min) c_min = n;
+                if (n > c_max) c_max = n;
+            }
+
+            time(&t2);
+
+            t3 = trunc(1.0 *
+                      t2 + (t2 - t1) *
+                      (1 + window_top_edge - j) /
+                      (1 + j - window_bottom_edge) + 0.5);
+
+            printf("%ld %ld %d %d %d ",
+                   t2 - t1,
+                   t3 - t1,
+                   window_bottom_edge,
+                   j,
+                   window_top_edge);
+
+            printf("Est. finish %s", ctime(&t3));
+        }
+
+        // TODO free memory for c
+
+        bmp_int_array_write(c, filename_bmp.c_str(),
+                       c_min,
+                       c_max,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+    }
+
+    if (gradient_ascent_method > 0)
+    {
+        printf("gradient_ascent_method = %d\n", gradient_ascent_method);
+
+        cumulative_visibility = grd_ascend(num_viewpoints,
+                                           viewpoint_i,
+                                           viewpoint_j,
+                                           radius_max,
+                                           viewpoint_height_above_terrain,
+                                           num_iterations,
+                                           filename_bmp.c_str(),
+                                           gradient_ascent_method,
+                                           delta,
+                                           bmp_sequence_basename.c_str(),
+                                           window_left_edge,
+                                           window_right_edge,
+                                           window_bottom_edge,
+                                           window_top_edge);
+
+        for (i = 0; i < num_viewpoints; ++i)
+        {
+            printf("viewpoint %d = %d %d\n", i, viewpoint_i[i], viewpoint_j[i]);
+        }
+
+        State S = State(num_viewpoints, viewpoint_i, viewpoint_j);
+
+        printf("write %s\n", filename_bmp.c_str());
+        bmp_srtm_v_write(srtm, v->visible,
+            filename_bmp.c_str(),
+            S.num_viewpoints, S.pi, S.pj);
+
+        printf("cumulative visibility = %d\n", cumulative_visibility);
+
+        create_txt_file(filename_txt,
+                        "cumulative visibility = %d\n",
+                        cumulative_visibility);
+    }
+
+    if (optimize_pg)
+    {
+        State S = State(num_viewpoints, viewpoint_i, viewpoint_j);
+
+        cumulative_visibility =
+            pg_rsap(S,
+                    radius_max,
+                    viewpoint_height_above_terrain,
+                    dist_max,
+                    beta,
+                    num_iterations,
+                    bmp_sequence_basename.c_str());
+
+        printf("write %s\n", filename_bmp.c_str());
+        bmp_srtm_v_write(srtm, v->visible,
+            filename_bmp.c_str(),
+            S.num_viewpoints, S.pi, S.pj);
+
+        printf("cumulative visibility = %d\n", cumulative_visibility);
+
+        create_txt_file(filename_txt,
+                        "cumulative visibility = %d\n",
+                        cumulative_visibility);
+    }
+
+    if (optimize_sa)
+    {
+        State S = State(num_viewpoints, viewpoint_i, viewpoint_j);
+
+        cumulative_visibility =
+            sa_simulated_annealing(temp_initial,
+                                   S,
+                                   radius_max,
+                                   viewpoint_height_above_terrain,
+                                   dist_max,
+                                   exploration_radius_max,
+                                   communication_radius_max,
+                                   alpha,
+                                   beta,
+                                   lambda,
+                                   M_initial,
+                                   num_iterations,
+                                   use_distributed_algorithm,
+                                   bmp_sequence_basename.c_str());
+
+        printf("write %s\n", filename_bmp.c_str());
+        bmp_srtm_v_write(srtm, v->visible,
+            filename_bmp.c_str(),
+            S.num_viewpoints, S.pi, S.pj);
+
+        printf("cumulative visibility = %d\n", cumulative_visibility);
+
+        create_txt_file(filename_txt,
+                        "cumulative visibility = %d\n",
+                        cumulative_visibility);
+    }
+
+    cleanup();
+printf("end main()\n");
+    return 0;
+}
+
+@
+
+
+1.13
+log
+@document -H
+added -bmp-sequence
+correctly process random viewpoints
+print BMPs for all kinds of optimizations
+@
+text
+@d93 1
+d103 1
+d145 1
+d164 1
+d172 1
+d191 1
+d291 5
+d308 1
+a308 1
+                         radius_max);
+d341 1
+a341 1
+                                 radius_max);
+d396 1
+d400 11
+a410 1
+                                           bmp_sequence_basename.c_str());
+d433 1
+d459 1
+@
+
+
+1.12
+log
+@added -vrand
+@
+text
+@d88 1
+d92 1
+a92 1
+        "    -vrand num_viewpoints                  random viewpoints\n"
+d97 1
+d163 1
+d188 1
+d202 2
+a203 1
+    int     num_viewpoints;
+d251 1
+d253 2
+a254 1
+    num_viewpoints = viewpoints.size();
+d256 3
+a258 1
+    printf("num_viewpoints = %d\n", num_viewpoints);
+d260 1
+a260 1
+    if (num_viewpoints + num_rand_viewpoints >= MAX_NUM_VIEWPOINTS)
+d277 1
+a277 1
+    for (/* current i */ ; i < num_viewpoints + num_rand_viewpoints; ++i)
+d285 1
+d387 9
+a395 1
+                                           gradient_ascent_method);
+d413 2
+a414 1
+                    num_iterations);
+d416 4
+a419 3
+            bmp_srtm_v_write(srtm, v->visible,
+                filename_bmp.c_str(),
+                S.num_viewpoints, S.pi, S.pj);
+d444 2
+a445 1
+                                   use_distributed_algorithm);
+d447 4
+a450 3
+            bmp_srtm_v_write(srtm, v->visible,
+                filename_bmp.c_str(),
+                S.num_viewpoints, S.pi, S.pj);
+@
+
+
+1.11
+log
+@write .txt file
+set srand() value with -s
+@
+text
+@d91 1
+d140 1
+d164 1
+d251 1
+a251 1
+    if (num_viewpoints >= MAX_NUM_VIEWPOINTS)
+d268 8
+@
+
+
+1.10
+log
+@added maximum radii for exploration and communication
+support distributed algorithm
+@
+text
+@d53 27
+d88 1
+d92 1
+d157 3
+d180 2
+d208 1
+d369 4
+d391 4
+d420 4
+@
+
+
+1.9
+log
+@use Args module
+coding for distributed algorithm
+@
+text
+@d77 1
+d80 3
+d114 3
+d133 4
+a136 1
+    args.define("-r", &radius_max,          SQRT_INT_MAX);
+d166 1
+d224 1
+d238 4
+a241 1
+        cvis_wang_malloc(&v, &z, srtm, num_viewpoints, viewpoint_i, viewpoint_j, radius_max);
+d270 5
+a274 1
+                cvis_wang_malloc(&v, &z, srtm, 1, &i, &j, radius_max);
+a356 3
+        int exploration_radius_max = 999999;
+        int communication_radius_max = 999999;
+        bool use_distributed_algorithm = false;
+@
+
+
+1.8
+log
+@added -P for potential games
+@
+text
+@d2 2
+d21 3
+d25 1
+d27 1
+d53 1
+a53 1
+void usage(void)
+d55 1
+a55 1
+    msg_message(
+d58 8
+a65 6
+        "    -h infile.hst longitude latitude        read HST file for pt\n"
+        "    -H outfile.bmp                          write BMP height file\n"
+        "    -w long_min long_max lat_min lat_max    specify window\n"
+        "    -r radius_max                           radius for cumulative visibility\n"
+        "    -V outfile.bmp longitude latitude       write visibility at pt\n"
+        "    -C outfile.bmp                          write cumulative visibility\n"
+d67 3
+a69 3
+        "    -G method outfile.bmp lon lat           write results of gradient ascent\n"
+        "    -v longitude latitude                   additional pts\n"
+        "    -t num_iterations                       number of iterations\n"
+d71 8
+a78 7
+        "    -S file.bmp lon lat ( -v lat lon )*     write results of S.A.\n"
+        "    -T initial_temperature\n"
+        "    -M initial_iterations_at_temp\n"
+        "    -a alpha\n"
+        "    -b beta\n"
+        "    -d dist_max\n"
+        "    -t max_time\n"
+d80 4
+a83 4
+        "    -P file.bmp lon lat ( -v lat lon )*     write results of P.G.\n"
+        "    -b beta\n"
+        "    -d dist_max\n"
+        "    -t max_time\n"
+a84 2
+
+    exit(0);
+d88 1
+a88 16
+double arg_double(const char *s)
+{
+    char *suffix;
+
+    double result = strtod(s, &suffix);
+
+    if (suffix == s || *suffix != '\0')
+    {
+        msg_error("%s is not a floating-point parameter", s);
+    }
+
+    return result;
+}
+
+
+int arg_int(const char *s)
+d90 1
+a90 11
+    char *suffix;
+
+    int result = (int) strtol(s, &suffix, 10);
+
+    if (suffix == s || *suffix != '\0')
+    {
+        msg_error("%s is not an integer parameter", s);
+    }
+
+    return result;
+}
+d92 1
+d94 50
+a143 96
+void check_args
+(
+    int         argc,
+    char      **argv,
+    char      **p_filename_hst,
+    double     *p_longitude,
+    double     *p_latitude,
+    char      **p_filename_heights_bmp,     // non-NULL if filename is given
+    double     *p_window_longitude_min,
+    double     *p_window_longitude_max,
+    double     *p_window_latitude_min,
+    double     *p_window_latitude_max,
+    char      **p_filename_visibility_bmp,  // non-NULL if filename is given
+    int        *p_num_viewpoints,
+    double     *p_viewpoint_longitude,
+    double     *p_viewpoint_latitude,
+    char      **p_filename_cumulative_visibility_bmp,   // non-NULL if fname
+    int        *p_radius_max,
+    char      **p_filename_gradient_ascent, // non-NULL if fname
+    int        *p_movement_method,
+    int        *p_num_iterations,
+    char      **p_filename_potential_games_bmp,
+    char      **p_filename_simulated_annealing_bmp,
+    int        *p_temp_initial,
+    int        *p_M_initial,
+    int        *p_dist_max,
+    double     *p_alpha,
+    double     *p_beta,
+    double     *p_lambda
+)
+{
+    int a;
+    int i;
+
+    if (argc == 1) usage();
+
+    // Default values.
+    *p_filename_hst                         = NULL;
+    *p_filename_heights_bmp                 = NULL;
+    *p_filename_visibility_bmp              = NULL;
+    *p_filename_cumulative_visibility_bmp   = NULL;
+    *p_radius_max                           = SQRT_INT_MAX;
+    *p_window_longitude_min                 = -180.01;
+    *p_window_longitude_max                 =  180.01;
+    *p_window_latitude_min                  =  -90.01;
+    *p_window_latitude_max                  =   90.01;
+    *p_num_viewpoints                       = 0;
+    *p_filename_gradient_ascent             = NULL;
+    *p_movement_method                      = 0;
+    *p_filename_potential_games_bmp         = NULL;
+    *p_filename_simulated_annealing_bmp     = NULL;
+    *p_temp_initial                         = 0;
+    *p_M_initial                            = 10;
+    *p_dist_max                             = 10;
+    *p_alpha                                = 0.9;
+    *p_beta                                 = 1.0;
+    *p_lambda                               = 0.7;
+
+    for (a = 1; a < argc; ++a)
+    {
+        // check for option like "-L"
+        if (argv[a] == NULL    ||
+            argv[a][0] != '-'  ||
+            argv[a][1] == '\0' ||
+            argv[a][2] != '\0') msg_error("Expected option at %s", argv[a]);
+
+        switch(argv[a][1])
+        {
+            case 'h':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -h infile.hst longitude latitude");
+                }
+
+                *p_filename_hst = argv[++a];
+                *p_longitude    = arg_double(argv[++a]);
+                *p_latitude     = arg_double(argv[++a]);
+                break;
+
+            case 'w':
+                if (a + 4 >= argc)
+                {
+                    msg_error("Format is -w longitude-min longitude-max latitude-min latitude-max");
+                }
+
+                *p_window_longitude_min = arg_double(argv[++a]);
+                *p_window_longitude_max = arg_double(argv[++a]);
+                *p_window_latitude_min  = arg_double(argv[++a]);
+                *p_window_latitude_max  = arg_double(argv[++a]);
+                break;
+
+            case 'H':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -H outfile.bmp");
+                }
+a144 220
+                *p_filename_heights_bmp = argv[++a];
+                break;
+
+            case 'P':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -P file.bmp viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_filename_potential_games_bmp   = argv[++a];
+                *p_viewpoint_longitude      = arg_double(argv[++a]);
+                *p_viewpoint_latitude       = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'S':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -S file.bmp viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_filename_simulated_annealing_bmp   = argv[++a];
+                *p_viewpoint_longitude      = arg_double(argv[++a]);
+                *p_viewpoint_latitude       = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'V':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -V outfile.bmp viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_filename_visibility_bmp  = argv[++a];
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'G':
+                if (a + 3 >= argc)
+                {
+                    msg_error("Format is -G method outfile.TBD viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_movement_method = arg_int(argv[++a]);
+                *p_filename_gradient_ascent = argv[++a];
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'v':
+                if (a + 2 >= argc)
+                {
+                    msg_error("Format is -v viewpoint-longitude viewpoint-latitude");
+                }
+
+                if (*p_num_viewpoints >= MAX_NUM_VIEWPOINTS)
+                {
+                    msg_error("Too many viewpoints.  Only %d allowed.",
+                              MAX_NUM_VIEWPOINTS);
+                }
+
+                *p_viewpoint_longitude = arg_double(argv[++a]);
+                *p_viewpoint_latitude  = arg_double(argv[++a]);
+
+                ++(*p_num_viewpoints);
+                ++p_viewpoint_longitude;
+                ++p_viewpoint_latitude;
+                break;
+
+            case 'C':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -C outfile.bmp");
+                }
+
+                *p_filename_cumulative_visibility_bmp = argv[++a];
+                break;
+
+            case 'r':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -r radius_max");
+                }
+
+                *p_radius_max = arg_double(argv[++a]);
+                break;
+
+            case 't':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -t num_iterations");
+                }
+
+                *p_num_iterations = arg_int(argv[++a]);
+                break;
+
+            case 'T':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -T initial_temperature");
+                }
+
+                *p_temp_initial = arg_int(argv[++a]);
+                break;
+
+            case 'M':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -M initial_loops_per_temp");
+                }
+
+                *p_M_initial = arg_int(argv[++a]);
+                break;
+
+            case 'a':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -a alpha");
+                }
+
+                *p_alpha = arg_double(argv[++a]);
+                break;
+
+            case 'b':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -b beta");
+                }
+
+                *p_beta = arg_double(argv[++a]);
+                break;
+
+            case 'l':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -l lambda");
+                }
+
+                *p_lambda = arg_double(argv[++a]);
+                break;
+
+            case 'd':
+                if (a + 1 >= argc)
+                {
+                    msg_error("Format is -d dist_max");
+                }
+
+                *p_dist_max = arg_int(argv[++a]);
+                break;
+
+            default:
+                msg_error("Unknown option argv[a]");
+                break;
+        }
+    }
+
+    if (*p_filename_hst == NULL) msg_error ("must specify an HST file");
+
+    printf("filename hst = %s\n", *p_filename_hst);
+    printf("longitude = %f\n", *p_longitude);
+    printf("latitude = %f\n", *p_latitude);
+    printf("filename heights = %s\n", *p_filename_heights_bmp);
+    printf("window longitude min = %f\n", *p_window_longitude_min);
+    printf("window longitude max = %f\n", *p_window_longitude_max);
+    printf("window latitude min = %f\n", *p_window_latitude_min);
+    printf("window latitude max = %f\n", *p_window_latitude_max);
+    printf("filename visibility = %s\n", *p_filename_visibility_bmp);
+
+    for (i = 0; i < *p_num_viewpoints; ++i)
+    {
+        printf("viewpoint longitude[%d] = %f\n", i, p_viewpoint_longitude[i - *p_num_viewpoints]);
+        printf("viewpoint latitude[%d] = %f\n", i, p_viewpoint_latitude[i - *p_num_viewpoints]);
+    }
+
+    printf("filename cumulative visibility = %s\n", *p_filename_cumulative_visibility_bmp);
+    printf("radius max = %d\n", *p_radius_max);
+}
+
+
+int main(int argc, char **argv)
+{
+d147 1
+d150 1
+a150 8
+    char   *filename_hst;
+    double  longitude;
+    double  latitude;
+    double  window_longitude_min;
+    double  window_longitude_max;
+    double  window_latitude_min;
+    double  window_latitude_max;
+    char   *filename_heights_bmp;
+a153 1
+    char   *filename_visibility_bmp;
+d156 1
+a156 4
+    char   *filename_cumulative_visibility_bmp;
+    int     radius_max;
+    char   *filename_gradient_ascent;
+    int     movement_method;
+a159 1
+    int     num_iterations;
+a160 8
+    char   *filename_potential_games_bmp;
+    char   *filename_simulated_annealing_bmp;
+    int     temp_initial;
+    int     M_initial;
+    int     dist_max;
+    double  alpha;
+    double  beta;
+    double  lambda;
+d164 10
+a173 25
+    check_args(argc, argv,
+               &filename_hst, &longitude, &latitude, 
+               &filename_heights_bmp,
+               &window_longitude_min, &window_longitude_max,
+               &window_latitude_min, &window_latitude_max,
+               &filename_visibility_bmp,
+               &num_viewpoints,
+               viewpoint_longitude, viewpoint_latitude,
+               &filename_cumulative_visibility_bmp,
+               &radius_max,
+               &filename_gradient_ascent,
+               &movement_method,
+               &num_iterations,
+               &filename_potential_games_bmp,
+               &filename_simulated_annealing_bmp,
+               &temp_initial,
+               &M_initial,
+               &dist_max,
+               &alpha,
+               &beta,
+               &lambda);
+
+    srtm = srtm_malloc(filename_hst, longitude, latitude);
+    //srtm = srtm_malloc(W123N37, -123, 37);
+    //srtm = srtm_malloc(W123N36, -123, 36);
+a174 1
+//    srtm_fix_elevations(srtm);
+d176 2
+a177 2
+                     window_longitude_min, window_longitude_max,
+                     window_latitude_min,  window_latitude_max,
+a180 3
+    // UCSC bounding box
+    //srtm_find_limits(srtm, -122.069, -122.048, 36.977, 37.004,
+    //                           &h_min, &h_max, &window_left_edge, &window_right_edge, &window_bottom_edge, &window_top_edge);
+d182 29
+a210 1
+    for (i = 0; i < num_viewpoints; ++i)
+d212 4
+a215 2
+        srtm_find_viewpoint(viewpoint_longitude[i], viewpoint_latitude[i],
+                            &viewpoint_i[i], &viewpoint_j[i]);
+d218 1
+a218 1
+    if (filename_heights_bmp != NULL)
+d220 2
+a221 2
+        printf("heights\n");
+        bmp_srtm_write(srtm, filename_heights_bmp, 0, NULL, NULL);
+d224 1
+a224 1
+    if (filename_visibility_bmp != NULL)
+d228 1
+a228 1
+        bmp_cvis_wang_write(v, filename_visibility_bmp);
+d231 1
+a231 1
+    if (filename_cumulative_visibility_bmp != NULL)
+d293 1
+a293 1
+        bmp_int_array_write(c, filename_cumulative_visibility_bmp,
+d302 1
+a302 1
+    if (filename_gradient_ascent != NULL)
+d304 2
+d311 2
+a312 2
+                                           filename_gradient_ascent,
+                                           movement_method);
+d317 1
+a317 1
+    if (filename_potential_games_bmp != NULL)
+d329 1
+a329 1
+                filename_potential_games_bmp,
+d335 1
+a335 1
+    if (filename_simulated_annealing_bmp != NULL)
+d338 3
+d347 2
+d353 2
+a354 1
+                                   num_iterations);
+d357 1
+a357 1
+                filename_simulated_annealing_bmp,
+@
+
+
+1.7
+log
+@moved State, Statistics, and Temperature to their own files
+@
+text
+@d19 1
+d22 1
+d62 1
+a62 1
+        "    -S lon lat ( -v lat lon )*  write results of S.A.\n"
+d69 5
+d131 1
+d159 1
+d210 21
+d234 1
+a234 1
+                    msg_error("Format is -S viewpoint-longitude viewpoint-latitude");
+d454 1
+d478 1
+d605 18
+@
+
+
+1.6
+log
+@added Simulated Annealing
+@
+text
+@d1 2
+a7 1
+#include <limits.h>
+d17 7
+@
+
+
+1.5
+log
+@now print final cumulative visibility
+@
+text
+@d17 1
+d22 2
+d47 2
+a49 1
+        "    -G outfile.bmp longitude latitude       write results of gradient ascent\n"
+d51 8
+d115 8
+a122 1
+    int        *p_num_iterations
+d143 7
+d193 21
+d304 54
+d366 18
+a383 18
+//    printf("filename hst = %s\n", *p_filename_hst);
+//    printf("longitude = %f\n", *p_longitude);
+//    printf("latitude = %f\n", *p_latitude);
+//    printf("filename heights = %s\n", *p_filename_heights_bmp);
+//    printf("window longitude min = %f\n", *p_window_longitude_min);
+//    printf("window longitude max = %f\n", *p_window_longitude_max);
+//    printf("window latitude min = %f\n", *p_window_latitude_min);
+//    printf("window latitude max = %f\n", *p_window_latitude_max);
+//    printf("filename visibility = %s\n", *p_filename_visibility_bmp);
+//
+//    for (i = 0; i < *p_num_viewpoints; ++i)
+//    {
+//        printf("viewpoint longitude[%d] = %f\n", i, p_viewpoint_longitude[i - *p_num_viewpoints]);
+//        printf("viewpoint latitude[%d] = %f\n", i, p_viewpoint_latitude[i - *p_num_viewpoints]);
+//    }
+//
+//    printf("filename cumulative visibility = %s\n", *p_filename_cumulative_visibility_bmp);
+//    printf("radius max = %d\n", *p_radius_max);
+d416 9
+d438 8
+a445 1
+               &num_iterations);
+d565 22
+d588 1
+@
+
+
+1.4
+log
+@add parameters to bmp_srtm_write()
+@
+text
+@d314 1
+d437 9
+a445 7
+        grd_ascend(num_viewpoints,
+                   viewpoint_i,
+                   viewpoint_j,
+                   radius_max,
+                   num_iterations,
+                   filename_gradient_ascent,
+                   movement_method);
+@
+
+
+1.3
+log
+@move i and j limits into structs
+@
+text
+@d353 1
+a353 1
+        bmp_srtm_write(srtm, filename_heights_bmp);
+@
+
+
+1.2
+log
+@support different gradient-computation methods
+support -t for maximum iterations
+@
+text
+@d353 1
+a353 7
+        bmp_srtm_write(srtm, filename_heights_bmp,
+                       h_min,
+                       h_max,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+d360 1
+a360 5
+        bmp_cvis_wang_write(v, filename_visibility_bmp,
+                       window_left_edge,
+                       window_right_edge,
+                       window_bottom_edge,
+                       window_top_edge);
+a440 4
+                   window_left_edge,
+                   window_right_edge,
+                   window_bottom_edge,
+                   window_top_edge,
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d45 2
+d67 16
+d101 3
+a103 1
+    char      **p_filename_gradient_ascent  // non-NULL if fname
+d123 1
+d191 1
+a191 1
+                    msg_error("Format is -G outfile.TBD viewpoint-longitude viewpoint-latitude");
+d200 1
+d248 9
+d309 1
+d313 1
+d325 3
+a327 1
+               &filename_gradient_ascent);
+d450 1
+a450 1
+                   10,
+d455 2
+a456 1
+                   filename_gradient_ascent);
+@

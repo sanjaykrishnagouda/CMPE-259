@@ -1,0 +1,735 @@
+head	1.9;
+access;
+symbols
+	ver1_2:1.9
+	ver1_12:1.9
+	ver1_11:1.9
+	ver1_1:1.9
+	ver1_03:1.9
+	ver1_02:1.9
+	v1_01:1.9
+	v1_0:1.9
+	beta1:1.9;
+locks; strict;
+comment	@ * @;
+
+
+1.9
+date	2011.10.26.01.11.24;	author kerryveenstra;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2011.08.05.16.13.03;	author kerryveenstra;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2011.07.20.22.18.34;	author kerryveenstra;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2011.05.01.01.57.21;	author kerryveenstra;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2011.04.29.21.26.10;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2011.03.25.15.24.15;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2011.03.25.10.58.51;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.02.18.40;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.25.57;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@SRTM I/O utilities
+@
+
+
+1.9
+log
+@reverting to version as of 2011/07/17
+@
+text
+@#include <stdio.h>
+#include <stdlib.h>
+#include "srtm.h"
+#include "math.h"
+
+
+SRTM_TILE *srtm_malloc
+(
+    const char *filename,
+    int         origin_lon_deg,
+    int         origin_lat_deg
+)
+{
+    int         high_byte, i, j, low_byte;
+    SRTM_TILE  *srtm;
+
+    FILE *f = fopen(filename, "rb");
+
+    if (f != NULL)
+    {
+        srtm = malloc(sizeof(*srtm));
+        srtm->origin_lon_deg = origin_lon_deg;
+        srtm->origin_lat_deg = origin_lat_deg;
+
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            srtm->h[i] = malloc((MAX_INDEX + 1) * sizeof(srtm->h[i][0]));
+        }
+
+        /* north to south */
+        for (j = MAX_INDEX; j >= 0; --j)
+        {
+            /* west to east */
+            for (i = 0; i <= MAX_INDEX; ++i)
+            {
+                /* get 16-bit int; big-endian byte order */
+                high_byte = getc(f);
+                low_byte  = getc(f);
+
+                srtm->h[i][j] = 256 * high_byte + low_byte;
+            }
+        }
+
+        close(f);
+    }
+    else
+    {
+        printf("Error opening %s\n", filename);
+        exit(1);
+    }
+
+    return srtm;
+}
+
+
+void srtm_free(SRTM_TILE **p_srtm)
+{
+    int i;
+
+    if (p_srtm != NULL && *p_srtm != NULL)
+    {
+        for (i = MAX_INDEX; i >= 0; --i)
+        {
+            if ((*p_srtm)->h[i] != NULL) free((*p_srtm)->h[i]);
+        }
+
+        free(*p_srtm);
+        *p_srtm = NULL;
+    }
+}
+
+
+void srtm_find_limits
+(
+    SRTM_TILE  *srtm,
+    double      longitude_min,
+    double      longitude_max,
+    double      latitude_min,
+    double      latitude_max,
+
+    // results
+    int        *p_h_min,
+    int        *p_h_max,
+    int        *p_i_min,
+    int        *p_i_max,
+    int        *p_j_min,
+    int        *p_j_max
+)
+{
+    int lat_degrees, lat_minutes, lat_seconds;
+    int lon_degrees, lon_minutes, lon_seconds;
+    int h, i, j;
+    double latitude, longitude;
+
+    int h_min =  100000;
+    int h_max = -100000;
+
+    int i_min =  100000;
+    int i_max = -100000;
+
+    int j_min =  100000;
+    int j_max = -100000;
+
+    /* file data is stored top-to-bottom, left-to-right */
+    /* first line is on top */
+    /* first sample of each line is on left */
+
+    lat_degrees = srtm->origin_lat_deg;
+    lat_minutes = 0;
+    lat_seconds = 0;
+
+    latitude = lat_degrees;
+
+    for (j = 0; j <= MAX_INDEX; ++j)
+    {
+        lon_degrees = srtm->origin_lon_deg;
+        lon_minutes = 0;
+        lon_seconds = 0;
+
+        longitude = lon_degrees;
+
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            if (longitude_min < longitude && longitude < longitude_max &&
+                latitude_min  < latitude  && latitude  < latitude_max)
+            {
+                h = srtm->h[i][j];
+
+                if (h != -32768)
+                {
+                    if (h < h_min) h_min = h;
+                    if (h > h_max) h_max = h;
+                }
+
+                if (i < i_min) i_min = i;
+                if (i > i_max) i_max = i;
+
+                if (j < j_min) j_min = j;
+                if (j > j_max) j_max = j;
+            }
+
+            ++lon_seconds;
+
+            if (lon_seconds > 59)
+            {
+                lon_seconds -= 60;
+                lon_minutes +=  1;;
+
+                if (lon_minutes > 59)
+                {
+                    lon_minutes -= 60;
+                    lon_degrees +=  1;
+                }
+            }
+
+            longitude += 1.0 / MAX_INDEX;
+        }
+
+        ++lat_seconds;
+
+        if (lat_seconds > 59)
+        {
+            lat_seconds -= 60;
+            lat_minutes +=  1;
+
+            if (lat_minutes > 59)
+            {
+                lat_minutes -= 60;
+                lat_degrees +=  1;
+            }
+        }
+
+        latitude += 1.0 / MAX_INDEX;
+    }
+
+    *p_h_min = h_min;
+    *p_h_max = h_max;
+
+    *p_i_min = i_min;
+    *p_i_max = i_max;
+
+    *p_j_min = j_min;
+    *p_j_max = j_max;
+}
+
+
+void srtm_find_viewpoint
+(
+    double      viewpoint_longitude,
+    double      viewpoint_latitude,
+
+    // results
+    int        *p_viewpoint_i,
+    int        *p_viewpoint_j
+)
+{
+    double t;   // Extra parameter needed by modf().  Value unused.
+
+    // See srtm.h for the relationship between longitude/latitude and indexes.
+
+    if (viewpoint_longitude < 0.0)
+    {
+        *p_viewpoint_i = MAX_INDEX - modf(-viewpoint_longitude, &t) * MAX_INDEX + 0.5;
+    }
+    else
+    {
+        *p_viewpoint_i = modf(viewpoint_longitude, &t) * MAX_INDEX + 0.5;
+    }
+
+    if (viewpoint_latitude < 0.0)
+    {
+        *p_viewpoint_j = MAX_INDEX - modf(-viewpoint_latitude, &t) * MAX_INDEX + 0.5;
+    }
+    else
+    {
+        *p_viewpoint_j = modf(viewpoint_latitude, &t) * MAX_INDEX + 0.5;
+    }
+}
+
+
+void srtm_fix_elevations(SRTM_TILE  *srtm)
+{
+    int h, i, j;
+
+    for (j = 0; j <= MAX_INDEX; ++j)
+    {
+        for (i = 0; i <= MAX_INDEX; ++i)
+        {
+            h = srtm->h[i][j];
+
+            if (h < 0) h = 0;
+
+            srtm->h[i][j] = h;
+        }
+    }
+}
+@
+
+
+1.8
+log
+@can read four adjacent HGT files
+@
+text
+@a0 2
+#include <math.h>
+#include <stddef.h>
+a2 2
+
+#include "msg.h"
+d4 1
+a4 2
+#include "visibility.h"
+
+a5 3
+/*
+*   Allocate memory and initialize with HGT file(s).
+*/
+d9 3
+a11 4
+    const char **filename,
+    int         *origin_lon_deg,
+    int         *origin_lat_deg,
+    int          num_hgt_files
+a15 17
+    int         max_index;
+    FILE       *f[MAX_HGT_FILES];
+
+    switch (num_hgt_files)
+    {
+        case 1:
+            max_index = MAX_INDEX;
+            break;
+
+        case 4:
+            max_index = 2 * MAX_INDEX;
+            break;
+
+        default:
+            INTERNAL_ERROR_1("num_hgt_files == %d", num_hgt_files);
+            break;
+    }
+d17 1
+a17 3
+    // Need to open up to four files and confirm that all are usable.
+    // On error, need to close previously opened files.
+    for (i = 0; i < num_hgt_files; ++i) f[i] = NULL;    // means not open
+d19 1
+a19 1
+    for (i = 0; i < num_hgt_files; ++i)
+d21 3
+a23 1
+        f[i] = fopen(filename[i], "rb");
+d25 1
+a25 1
+        if (f[i] == NULL)
+d27 1
+a27 4
+            // Close other files.
+            for (j = 0; j < i; ++j) fclose(f[j]);
+
+            msg_error("Error opening %s\n", filename[i]);
+a28 8
+    }
+
+    srtm = malloc(offsetof(SRTM_TILE, h) +
+                  ((max_index + 1) * sizeof(srtm->h[0])));
+
+    srtm->origin_lon_deg = origin_lon_deg[0];   // index 0 is lower-left corner
+    srtm->origin_lat_deg = origin_lat_deg[0];
+    srtm->max_index = max_index;
+d30 2
+a31 13
+    for (i = 0; i <= max_index; ++i)
+    {
+        srtm->h[i] = malloc((max_index + 1) * sizeof(srtm->h[i][0]));
+    }
+
+    // Rows of .hgt files appear in north-to-south order.
+    // Store southmost rows in lower array indexes.
+
+    /* north to south */
+    for (j = max_index; j >= 0; --j)
+    {
+        /* west to east */
+        for (i = 0; i <= max_index; ++i)
+d33 6
+a38 10
+            // When reading four HGT files, choose file based on quadrant.
+
+            // NOTE:  THE FILES HAVE OVERLAPPING DATA!!!
+            // WE NEED TO READ OVERLAPPING DATA VALUES FROM ALL FILES.
+
+            // Quadrants:
+            //
+            // File 2  |  File 3
+            // --------+--------
+            // File 0  |  File 1
+d40 1
+a40 40
+            switch (num_hgt_files)
+            {
+                case 4:
+                    if (i >= MAX_INDEX && j >= MAX_INDEX)
+                    {
+                        // Upper-right
+                        /* get 16-bit int; big-endian byte order */
+                        high_byte = getc(f[3]);
+                        low_byte  = getc(f[3]);
+                    }
+                    // fall through
+
+                case 3:
+                    if (i <= MAX_INDEX && j >= MAX_INDEX)
+                    {
+                        // Upper-left
+                        /* get 16-bit int; big-endian byte order */
+                        high_byte = getc(f[2]);
+                        low_byte  = getc(f[2]);
+                    }
+                    // fall through
+
+                case 2:
+                    if (i >= MAX_INDEX && j <= MAX_INDEX)
+                    {
+                        // Lower-right
+                        /* get 16-bit int; big-endian byte order */
+                        high_byte = getc(f[1]);
+                        low_byte  = getc(f[1]);
+                    }
+                    // fall through
+
+                case 1:
+                    if (i <= MAX_INDEX && j <= MAX_INDEX)
+                    {
+                        // Lower-left
+                        /* get 16-bit int; big-endian byte order */
+                        high_byte = getc(f[0]);
+                        low_byte  = getc(f[0]);
+                    }
+d42 1
+d44 1
+a44 3
+
+            srtm->h[i][j] = 256 * high_byte + low_byte;
+        }
+d46 1
+a46 2
+
+    for (i = 0; i < num_hgt_files; ++i)
+d48 2
+a49 1
+        fclose(f[i]);
+d62 1
+a62 1
+        for (i = (*p_srtm)->max_index; i >= 0; --i)
+d73 1
+a73 6
+/*
+*   Convert real-number longitude and latitude into pixel limits.
+*   Also, find the height limits of the pixels in the currently
+*   loaded SRTM data.
+*/
+BOOL srtm_find_limits
+d114 1
+a114 1
+    for (j = 0; j <= srtm->max_index; ++j)
+d122 1
+a122 1
+        for (i = 0; i <= srtm->max_index; ++i)
+a123 1
+            // pixel inside the window?
+d156 1
+a156 1
+            longitude += 1.0 / 3600.0;
+d173 1
+a173 1
+        latitude += 1.0 / 3600.0;
+a183 2
+
+    return h_min < h_max && i_min < i_max && j_min < j_max;
+a188 1
+    SRTM_TILE  *srtm,
+d197 3
+a199 4
+    double left   = srtm->origin_lon_deg;
+    double bottom = srtm->origin_lat_deg;
+    double right  = left   + srtm->max_index / 3600;
+    double top    = bottom + srtm->max_index / 3600;
+d201 8
+a208 2
+    ASSERT(left   <= viewpoint_longitude && viewpoint_longitude <= right &&
+           bottom <= viewpoint_latitude  && viewpoint_latitude  <= top);
+d210 8
+a217 2
+    *p_viewpoint_i = floor((viewpoint_longitude - left  ) * 3600.0 + 0.5);
+    *p_viewpoint_j = floor((viewpoint_latitude  - bottom) * 3600.0 + 0.5);
+d225 1
+a225 1
+    for (j = 0; j <= srtm->max_index; ++j)
+d227 1
+a227 1
+        for (i = 0; i <= srtm->max_index; ++i)
+@
+
+
+1.7
+log
+@"math.h" --> <math.h>
+@
+text
+@d2 1
+d6 1
+d8 1
+d11 4
+d17 4
+a20 3
+    const char *filename,
+    int         origin_lon_deg,
+    int         origin_lat_deg
+d25 17
+d43 3
+a45 1
+    FILE *f = fopen(filename, "rb");
+d47 1
+a47 1
+    if (f != NULL)
+d49 1
+a49 3
+        srtm = malloc(sizeof(*srtm));
+        srtm->origin_lon_deg = origin_lon_deg;
+        srtm->origin_lat_deg = origin_lat_deg;
+d51 1
+a51 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d53 4
+a56 1
+            srtm->h[i] = malloc((MAX_INDEX + 1) * sizeof(srtm->h[i][0]));
+d58 8
+d67 13
+a79 2
+        /* north to south */
+        for (j = MAX_INDEX; j >= 0; --j)
+d81 12
+a92 2
+            /* west to east */
+            for (i = 0; i <= MAX_INDEX; ++i)
+d94 40
+a133 3
+                /* get 16-bit int; big-endian byte order */
+                high_byte = getc(f);
+                low_byte  = getc(f);
+d135 1
+a135 2
+                srtm->h[i][j] = 256 * high_byte + low_byte;
+            }
+d137 1
+d139 1
+a139 3
+        close(f);
+    }
+    else
+d141 1
+a141 2
+        printf("Error opening %s\n", filename);
+        exit(1);
+d154 1
+a154 1
+        for (i = MAX_INDEX; i >= 0; --i)
+d165 6
+a170 1
+void srtm_find_limits
+d211 1
+a211 1
+    for (j = 0; j <= MAX_INDEX; ++j)
+d219 1
+a219 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+d221 1
+d254 1
+a254 1
+            longitude += 1.0 / MAX_INDEX;
+d271 1
+a271 1
+        latitude += 1.0 / MAX_INDEX;
+d282 2
+d289 1
+d298 4
+a301 3
+    double t;   // Extra parameter needed by modf().  Value unused.
+
+    // See srtm.h for the relationship between longitude/latitude and indexes.
+d303 2
+a304 8
+    if (viewpoint_longitude < 0.0)
+    {
+        *p_viewpoint_i = MAX_INDEX - modf(-viewpoint_longitude, &t) * MAX_INDEX + 0.5;
+    }
+    else
+    {
+        *p_viewpoint_i = modf(viewpoint_longitude, &t) * MAX_INDEX + 0.5;
+    }
+d306 2
+a307 8
+    if (viewpoint_latitude < 0.0)
+    {
+        *p_viewpoint_j = MAX_INDEX - modf(-viewpoint_latitude, &t) * MAX_INDEX + 0.5;
+    }
+    else
+    {
+        *p_viewpoint_j = modf(viewpoint_latitude, &t) * MAX_INDEX + 0.5;
+    }
+d315 1
+a315 1
+    for (j = 0; j <= MAX_INDEX; ++j)
+d317 1
+a317 1
+        for (i = 0; i <= MAX_INDEX; ++i)
+@
+
+
+1.6
+log
+@added srtm_find_limits
+@
+text
+@d1 1
+d4 1
+a5 1
+#include "math.h"
+@
+
+
+1.5
+log
+@srtm_free now sets freed pointer to NULL
+@
+text
+@d4 1
+d73 1
+a73 1
+void srtm_find_elevation_limits
+d187 34
+@
+
+
+1.4
+log
+@correct spelling of origin
+error if can't open file
+added srtm_find_elevation_limits
+added srtm_fix_elevations
+@
+text
+@d55 1
+a55 1
+void srtm_free(SRTM_TILE *srtm)
+d59 1
+a59 1
+    for (i = MAX_INDEX; i >= 0; --i)
+d61 7
+a67 1
+        free(srtm->h[i]);
+a68 2
+
+    free(srtm);
+@
+
+
+1.3
+log
+@row-major order --> column-major order
+@
+text
+@d13 1
+a13 1
+    int         d, high_byte, i, j, low_byte;
+d22 1
+a22 1
+        srtm->origon_lat_deg = origin_lat_deg;
+d45 5
+d68 130
+@
+
+
+1.2
+log
+@use MAX_INDEX
+@
+text
+@a19 4
+        /* file data is stored top-to-bottom, left-to-right */
+        /* first line is northmost */
+        /* first sample of each line is westmost */
+
+d24 1
+a24 1
+        for (i = MAX_INDEX; i >= 0; --i)
+d27 1
+d29 5
+a33 1
+            for (j = 0; j <= MAX_INDEX; ++j)
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d28 1
+a28 1
+        for (i = 3600; i > 0; --i)
+d30 1
+a30 1
+            srtm->h[i] = malloc(3601 * sizeof(srtm->h[i][0]));
+d32 1
+a32 1
+            for (j = 0; j <= 3600; ++j)
+d53 1
+a53 1
+    for (i = 3600; i > 0; --i)
+@

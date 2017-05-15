@@ -1,0 +1,208 @@
+head	1.3;
+access;
+symbols
+	ver1_2:1.3
+	ver1_12:1.3
+	ver1_11:1.3
+	ver1_1:1.3
+	ver1_03:1.3
+	ver1_02:1.3
+	v1_01:1.3
+	v1_0:1.3
+	beta1:1.3;
+locks; strict;
+comment	@# @;
+
+
+1.3
+date	2011.03.25.02.43.21;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2011.03.25.02.16.37;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.27.41;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@core of Wang's algorithm for computing visibility
+@
+
+
+1.3
+log
+@remove TRACEes
+@
+text
+@#if OCTANT == 1 || OCTANT == 2 || OCTANT == 7 || OCTANT == 8
+#define DELTA_I         +1
+#define I_LIMIT_CHECK   (i <= MAX_INDEX)
+#else
+#define DELTA_I         -1
+#define I_LIMIT_CHECK   (i >= 0)
+#endif
+
+
+#if OCTANT == 1 || OCTANT == 2 || OCTANT == 3 || OCTANT == 4
+#define DELTA_J         +1
+#define J_LIMIT_CHECK   (j <= MAX_INDEX)
+#else
+#define DELTA_J         -1
+#define J_LIMIT_CHECK   (j >= 0)
+#endif
+
+
+#define Hp3             (h[i][j] - base_elevation)
+#define Zp3             z[i][j]
+
+
+#if OCTANT == 1 || OCTANT == 4 || OCTANT == 5 || OCTANT == 8
+
+
+#define Zp1             z[i - DELTA_I][j - DELTA_J]
+#define Zp2             z[i - DELTA_I][j]
+
+    for (i = ii + 2 * DELTA_I, di = 2;
+         I_LIMIT_CHECK;
+         i = i + DELTA_I, ++di)
+    {
+        // First point is along horizontal ray where j = jj.
+        // Ignore Zp1 because it references into adjacent octant.
+        j   = jj;
+        a   = Hp3;
+        b   = di * Zp2 / (di - 1);
+        Zp3 = max(a, b);
+
+        // Interior of octant
+        for (j = jj + DELTA_J, dj = 1;
+             dj < di && J_LIMIT_CHECK;
+             j = j + DELTA_J, ++dj)
+        {
+            a   = Hp3;
+            b   = (dj * Zp1 + (di - dj) * Zp2) / (di - 1);
+            Zp3 = max(a, b);
+        }
+
+        // Point along diagonal ray?
+        if (dj == di && J_LIMIT_CHECK)
+        {
+            // Ignore Zp2 because it references adjacent octant.
+            a   = Hp3;
+            b   = dj * Zp1 / (di - 1);
+            Zp3 = max(a, b);
+        }
+    }
+
+
+#else
+
+
+#define Zp1             z[i - DELTA_I][j - DELTA_J]
+#define Zp2             z[i][j - DELTA_J]
+
+    for (j = jj + 2 * DELTA_J, dj = 2;
+         J_LIMIT_CHECK;
+         j = j + DELTA_J, ++dj)
+    {
+        // First point si along vertical ray where i = ii.
+        // Ignore Zp1 because it references into adjacent octant.
+        i   = ii;
+        a   = Hp3;
+        b   = dj * Zp2 / (dj - 1);
+        Zp3 = max(a, b);
+int trace_on = 0;
+
+        // Interior of octant
+        for (i = ii + DELTA_I, di = 1;
+             di < dj && I_LIMIT_CHECK;
+             i = i + DELTA_I, ++di)
+        {
+if (j == 3481 && i == 2) trace_on = 1;
+            a   = Hp3;
+            b   = (di * Zp1 + (dj - di) * Zp2) / (dj - 1);
+            Zp3 = max(a, b);
+        }
+
+        // Point along diagonal ray?
+        if (di == dj && I_LIMIT_CHECK)
+        {
+            // Ignore Zp2 because it references adjacent octant.
+            a   = Hp3;
+            b   = di * Zp1 / (dj - 1);
+            Zp3 = max(a, b);
+        }
+    }
+
+#endif
+
+#undef DELTA_I
+#undef I_LIMIT_CHECK
+#undef DELTA_J
+#undef J_LIMIT_CHECK
+
+#undef Hp3
+#undef Zp1
+#undef Zp2
+#undef Zp3
+@
+
+
+1.2
+log
+@use MAX_INDEX
+@
+text
+@a84 7
+if (trace_on) TRACE_sp(__FILE__, __LINE__, "h=", h);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "ii=", ii);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "jj=", jj);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "i=", i);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "j=", j);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "di=", di);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "dj=", dj);
+a85 1
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "a=", a);
+a86 1
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "b=", b);
+a87 1
+if (trace_on) TRACE(__FILE__, __LINE__);
+a89 8
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "ii=", ii);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "jj=", jj);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "i=", i);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "j=", j);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "di=", di);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "dj=", dj);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "DELTA_I=", DELTA_I);
+if (trace_on) TRACE_sd(__FILE__, __LINE__, "DELTA_J=", DELTA_J);
+a93 1
+if (trace_on) TRACE_sp(__FILE__, __LINE__, "h=", h);
+a94 1
+if (trace_on) TRACE(__FILE__, __LINE__);
+a95 1
+if (trace_on) TRACE(__FILE__, __LINE__);
+a96 1
+if (trace_on) TRACE(__FILE__, __LINE__);
+a97 1
+if (trace_on) TRACE(__FILE__, __LINE__);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+a3 1
+#define I_LIMIT_CHECK   (i <= 3600)
+d12 1
+a12 1
+#define J_LIMIT_CHECK   (j <= 3600)
+@

@@ -1,0 +1,1 @@
+srtm_test.o: srtm_test.cpp srtm.h data.h

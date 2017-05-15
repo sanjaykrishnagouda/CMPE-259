@@ -1,0 +1,4 @@
+#!/bin/bash
+# open Terminal to 241 columns
+# :qa to close all windows and quit
+vim $9 -c "split $6" -c "split $3" -c "vsplit $2" -c "vsplit $1" -c "wincmd j" -c "vsplit $5" -c "vsplit $4" -c "wincmd j" -c "vsplit $8" -c "vsplit $7"

@@ -1,0 +1,2 @@
+pg.o: pg.cpp srtm.h cvis_wang.h bmp.h visibility.h ge.h Disk.h State.h \
+  Statistics.h Temperature.h pg.h

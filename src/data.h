@@ -1,0 +1,6 @@
+#define W123N36 "../Data/SRTM_1_Arc_Second/N36W123.hgt"
+#define W123N37 "../Data/SRTM_1_Arc_Second/N37W123.hgt"
+#define FLAT    "../Data/SRTM_1_Arc_Second/flat.hgt"
+#define DISH    "../Data/SRTM_1_Arc_Second/dish.hgt"
+#define WAVY   "../Data/SRTM_1_Arc_Second/wavy.hgt"
+#define WAVY2  "../Data/SRTM_1_Arc_Second/wavy2.hgt"

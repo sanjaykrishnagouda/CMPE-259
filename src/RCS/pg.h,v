@@ -1,0 +1,50 @@
+head	1.2;
+access;
+symbols;
+locks
+	kerryveenstra:1.2; strict;
+comment	@ * @;
+
+
+1.2
+date	2013.07.22.22.15.12;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.02.24.08.36.21;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@header for potential games module
+@
+
+
+1.2
+log
+@added bmp_sequence_basename
+@
+text
+@int pg_rsap
+(
+    State  &S,                          // initial state (initial viewpoints)
+    int     visibility_radius_max,
+    int     dist_max,
+    double  beta,
+    int     time_max,
+    const char *bmp_sequence_basename
+);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d7 2
+a8 1
+    int     time_max
+@

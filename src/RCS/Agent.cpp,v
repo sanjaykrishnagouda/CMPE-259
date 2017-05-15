@@ -1,0 +1,51 @@
+head	1.1;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.1
+date	2013.07.14.01.53.07;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@C++ code for Agent class
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@/**************************************************************************
+
+File:           Agent.cpp
+
+Class:          Agent
+
+Description:    Store all state needed for an agent to anneal its state.
+
+Methods:        None.
+
+**************************************************************************/
+
+extern "C"
+{
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "bmp.h"
+#include "visibility.h"
+}
+
+#include "Disk.h"
+#include "State.h"
+#include "Statistics.h"
+#include "Temperature.h"
+
+#include "Agent.h"
+
+@

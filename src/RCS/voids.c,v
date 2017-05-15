@@ -1,0 +1,97 @@
+head	1.2;
+access;
+symbols
+	ver1_2:1.2
+	ver1_12:1.2
+	ver1_11:1.2
+	ver1_1:1.2
+	ver1_03:1.2
+	ver1_02:1.2
+	v1_01:1.2
+	v1_0:1.2
+	beta1:1.2;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2011.03.25.15.29.32;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2011.03.24.23.27.02;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@report number of voids in SRTM data
+@
+
+
+1.2
+log
+@longitude before latitude
+@
+text
+@#include <stdio.h>
+#include <stdlib.h>
+#include "data.h"
+
+void print_voids(const char *filename)
+{
+    int d, high_byte, i, line, low_byte;
+    int found_a_void = 0;
+
+    FILE *f = fopen(filename, "rb");
+
+    if (f != NULL)
+    {
+        /* file data is stored top-to-bottom, left-to-right */
+        /* first line is on top */
+        /* first sample of each line is on left */
+        for (line = 0; line < 3601; ++line)
+        {
+            for (i = 0; i < 3601; ++i)
+            {
+                /* get 16-bit int; big-endian byte order */
+                high_byte = getc(f);
+                low_byte  = getc(f);
+                d = 256 * high_byte + low_byte;
+
+                if (d == -32768)
+                {
+                    printf("%-12s %4d %4d %6d\n", filename, line, i, d);
+                    found_a_void = 1;
+                }
+            }
+        }
+
+        if (!found_a_void) printf("no voids in %s\n", filename);
+
+        close(f);
+    }
+}
+
+
+int main(int argc, char **argv)
+{
+    print_voids(W123N36);
+    print_voids(W123N37);
+
+    return 0;
+}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d43 2
+a44 2
+    print_voids(N36W123);
+    print_voids(N37W123);
+@

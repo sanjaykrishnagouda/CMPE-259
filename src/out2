@@ -1,0 +1,18 @@
+cc  -ggdb  -c -o bmp2html.o bmp2html.c
+cc  -ggdb  -c -o bmp.o bmp.c
+cc   bmp2html.o bmp.o msg.o   -o bmp2html
+cc  -ggdb  -c -o bmp2matlab.o bmp2matlab.c
+cc   bmp2matlab.o bmp.o msg.o   -o bmp2matlab
+cc  -ggdb  -c -o corners2.o corners2.c
+cc   corners2.o   -o corners2
+cc  -ggdb  -c -o srtm_test.o srtm_test.c
+cc  -ggdb  -c -o srtm.o srtm.c
+cc   srtm_test.o srtm.o   -o srtm_test
+cc  -ggdb  -c -o ucsclim.o ucsclim.c
+cc   ucsclim.o   -o ucsclim
+cc  -ggdb  -c -o visibility.o visibility.c
+cc  -ggdb  -c -o cvis_wang.o cvis_wang.c
+cc   visibility.o srtm.o cvis_wang.o bmp.o msg.o   -o visibility
+cc  -ggdb  -c -o voids.o voids.c
+cc   voids.o   -o voids
+./visibility -h ../Data/SRTM_1_Arc_Second/N37W123.hgt -123 37 -w -122.2 -122.0 37.0 37.3 -V braemoor-viewshed-3.bmp -122.1489 37.1158

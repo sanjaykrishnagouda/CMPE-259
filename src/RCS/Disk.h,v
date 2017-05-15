@@ -1,0 +1,80 @@
+head	1.2;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.2
+date	2013.06.14.02.49.32;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.03.29.01.56.07;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@header for Disk.cpp
+@
+
+
+1.2
+log
+@improved comments
+@
+text
+@/**************************************************************************
+
+File:           Disk.h
+
+Class:          Disk
+
+Description:    A circular region and a method that tests whether
+                a point is inside the region.
+
+                Note that the object stores radius^2 instead of radius so
+                that the radius comparison avoids a call to sqrt().
+
+Methods:        pt_is_inside()
+
+**************************************************************************/
+
+class Disk
+{
+    public:
+        Disk() {};
+        Disk(int _i, int _j, int _r)
+        {
+            i         = _i;
+            j         = _j;
+            r_squared = (long) _r * _r;
+        };
+        bool pt_is_inside(int pt_i, int pt_j);
+    private:
+        int i;
+        int j;
+        long r_squared;
+};
+
+
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 16
+a16 6
+//  Class:          Disk
+//
+//  Description:    A center and a radius.
+//
+//  Methods:        pt_is_inside()
+//
+d20 1
+@

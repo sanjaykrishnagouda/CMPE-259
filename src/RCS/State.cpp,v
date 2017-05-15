@@ -1,0 +1,280 @@
+head	1.5;
+access;
+symbols;
+locks; strict;
+comment	@// @;
+
+
+1.5
+date	2013.07.12.18.55.36;	author kerryveenstra;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2013.06.14.02.48.06;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2013.03.28.17.01.16;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2013.02.24.08.31.38;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.02.19.08.59.48;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@class State
+@
+
+
+1.5
+log
+@added communicating array
+switched order of force_viewpoint and its associated int
+@
+text
+@#include <cassert>
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+extern "C"
+{
+#include "srtm.h"
+#include "cvis_wang.h"
+#include "visibility.h"
+}
+
+#include "ge.h"
+#include "Disk.h"
+#include "State.h"
+
+
+State::State(int n, int *ii, int *jj, bool *pcom)
+{
+    num_viewpoints = n;
+
+    for (int k = 0; k < num_viewpoints; ++k)
+    {
+        pi[k] = ii[k];
+        pj[k] = jj[k];
+        pcommunicating[k] = pcom != NULL ? pcom[k] : true;
+    }
+}
+
+
+void State::print(const char *prefix)
+{
+    printf("%s ", prefix);
+
+    for (int k = 0; k < num_viewpoints; ++k)
+    {
+        if (k > 0) printf(" ");
+        printf("(%d,%d)", pi[k], pj[k]);
+    }
+
+    printf("\n");
+}
+
+
+void State::delete_viewpoint(int k)
+{
+    assert(num_viewpoints > 0);
+
+    // Delete viewpoint k by moving the last viewpoint over it.
+    pi[k] = pi[num_viewpoints - 1];
+    pj[k] = pj[num_viewpoints - 1];
+
+    --num_viewpoints;
+}
+
+
+//  Move one viewpoint of the State, and return the new State.
+//
+//  You can specify a specific viewpoint k or to let the algorithm select
+//  a random viewpoint.
+//
+//  The new viewpoint will conform to several constraints:  jump no more
+//  than the maximum jump distance, stay within a specified exploration
+//  disk, and stay within the boundaries of the visibility map.
+//
+//  The method returns an updated State object.
+//
+State sa_rand_next_state
+(
+    State       S,                      // Current state
+    int         sensor_radius_max,      // TODO (unused)
+    int         jump_radius_max,        // viewpt max random jump distance
+    Disk        exploration_region,     // new viewpoint stays inside here
+    CVIS_WANG  *v,                      // visibility data
+    bool        force_viewpoint,        // Move viewpoint give by forced_k.
+    int         forced_k                // Use if force_viewpoint = true.
+)
+{
+    int k, di, dj;
+    int new_pi, new_pj;
+    bool jumped_too_far;
+    bool explored_too_far;
+
+    if (force_viewpoint)
+    {
+        k = forced_k;
+    }
+    else
+    {
+        // Select a random viewpoint.
+        k = ge_rand_uniform_int(0, S.num_viewpoints - 1);
+    }
+
+    do
+    {
+        // Move the selected viewpoint up to jump_radius_max pixels:
+
+        // Move up to jump_radius_max pixels in i and j directions.
+        // This approach ensures a uniform distribution of next
+        // locations.
+        di  = ge_rand_uniform_int(0, jump_radius_max) *
+              (2 * ge_rand_uniform_int(0, 1) - 1);
+        dj  = ge_rand_uniform_int(0, jump_radius_max) *
+              (2 * ge_rand_uniform_int(0, 1) - 1);
+
+        new_pi = S.pi[k] + di;
+        new_pj = S.pj[k] + dj;
+
+        // Compute useful distances.  (Square the distance to avoid calling
+        // sqrt() in range comparisons.)
+        int jump_distance_squared = di * di + dj * dj;
+
+        jumped_too_far =
+            jump_distance_squared > jump_radius_max * jump_radius_max;
+
+        explored_too_far = !exploration_region.pt_is_inside(new_pi, new_pj);
+
+        // Step 2: Reject moves that jump too far or that explore too far.
+    } while (jumped_too_far || explored_too_far);
+
+    S.pi[k] = new_pi;
+    S.pj[k] = new_pj;
+
+    // Fix out-of-range
+    if (S.pi[k] > v->i_max) S.pi[k] = v->i_max;
+    if (S.pi[k] < v->i_min) S.pi[k] = v->i_min;
+    if (S.pj[k] > v->j_max) S.pj[k] = v->j_max;
+    if (S.pj[k] < v->j_min) S.pj[k] = v->j_min;
+
+    // TODO
+    // move cluster of node pairs which are separated
+    // by 2 * sensor_radius_max + d
+
+    // TODO
+    // teleportation of a node
+
+    return S;
+}
+
+
+@
+
+
+1.4
+log
+@improved comments, better random-number generators
+@
+text
+@d19 1
+a19 1
+State::State(int n, int *ii, int *jj)
+d27 1
+d76 2
+a77 2
+    int         forced_k,               // Use if force_viewpoint = true.
+    bool        force_viewpoint         // Move viewpoint k = forced_k.
+@
+
+
+1.3
+log
+@Support distributed algorithm.
+@
+text
+@d57 11
+d70 7
+a76 7
+    State       S,
+    int         sensor_radius_max,
+    int         jump_radius_max,
+    Disk        exploration_region,
+    CVIS_WANG  *v,
+    int         forced_k,
+    bool        force_viewpoint
+d91 1
+a91 1
+        k   = (int) (ge_rand_double() * S.num_viewpoints);
+d101 4
+a104 4
+        di  = ge_rand_double() * jump_radius_max *
+              (ge_rand_double() < 0.5 ? -1 : 1);
+        dj  = ge_rand_double() * jump_radius_max *
+              (ge_rand_double() < 0.5 ? -1 : 1);
+@
+
+
+1.2
+log
+@Use assert()
+moved sa_rand_double() to ge_rand_double()
+added State::delete_viewpoint()
+@
+text
+@d15 1
+d60 6
+a65 3
+    int         visibility_radius_max,
+    int         dist_max,
+    CVIS_WANG  *v
+d68 4
+a71 5
+    // Move a random viewpoint up to dist_max pixels along each axis.
+    // The Euclidian distance moved could be sqrt(2) * dist_max.
+    int k   = (int) (ge_rand_double() * S.num_viewpoints);
+    int di  = ge_rand_double() * dist_max * (ge_rand_double() < 0.5 ? -1 : 1);
+    int dj  = ge_rand_double() * dist_max * (ge_rand_double() < 0.5 ? -1 : 1);
+d73 39
+a111 2
+    S.pi[k] += di;
+    S.pj[k] += dj;
+d121 1
+a121 1
+    // by 2 * visibility_radius_max + d
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+d14 1
+d44 1
+a44 1
+double sa_rand_double()
+d46 7
+a52 1
+    return 1.0 * rand() / RAND_MAX;
+d66 3
+a68 3
+    int k   = (int) (sa_rand_double() * S.num_viewpoints);
+    int di  = sa_rand_double() * dist_max * (sa_rand_double() < 0.5 ? -1 : 1);
+    int dj  = sa_rand_double() * dist_max * (sa_rand_double() < 0.5 ? -1 : 1);
+@

@@ -1,0 +1,38 @@
+100a cumulative visibility = 39031
+100b cumulative visibility = 51692
+100c cumulative visibility = 46980
+
+50a  cumulative visibility = 21574
+50b  cumulative visibility = 24913
+50c  cumulative visibility = 24410
+
+33a  cumulative visibility = 13017
+33b  cumulative visibility = 13619
+33c  cumulative visibility = 12850
+
+25a  cumulative visibility =  8756
+25b  cumulative visibility =  8941
+25c  cumulative visibility =  9399
+
+20a  cumulative visibility =  5682
+20b  cumulative visibility =  6153
+20c  cumulative visibility =  6752
+
+15a  cumulative visibility =  3769
+15b  cumulative visibility =  4005
+15c  cumulative visibility =  4115
+
+10a  cumulative visibility =  2199
+10b  cumulative visibility =  2257
+10c  cumulative visibility =  2255
+
+
+ R   10 PI R^2
+---  ---------
+100    314159
+ 50     78540
+ 33     34212
+ 25     19635
+ 20     12566
+ 15      7069
+ 10      3142

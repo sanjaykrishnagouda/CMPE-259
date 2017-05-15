@@ -1,0 +1,101 @@
+head	1.4;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2013.07.14.02.32.26;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2013.07.12.18.56.15;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2013.06.14.02.39.46;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.02.24.08.36.00;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@header for general library
+@
+
+
+1.4
+log
+@added ge_srand()
+@
+text
+@/**************************************************************************
+
+File:           ge.h
+
+Description:    Some general-purpose utility functions.
+
+Global Functions:
+
+                double ge_rand_uniform_double()      0 < rand_value < 1
+                int    ge_rand_uniform_int()         v1 <= rand_value <= v2
+                void   ge_srand(unsigned int seed)
+
+**************************************************************************/
+
+#ifndef INT_MAX
+#define INT_MAX std::numeric_limits<int>::max()
+#endif
+
+#ifndef INT_MIN
+#define INT_MIN std::numeric_limits<int>::min()
+#endif
+
+double ge_rand_uniform_double(double v1, double v2);
+int ge_rand_uniform_int(int v1, int v2);
+void ge_srand(unsigned int seed);
+
+@
+
+
+1.3
+log
+@fix heading comment
+@
+text
+@d9 3
+a11 2
+                ge_rand_uniform_double()        0 < rand_value < 1
+                ge_rand_uniform_int()           v1 <= rand_value <= v2
+d25 1
+@
+
+
+1.2
+log
+@switched to new random-number generation functions
+@
+text
+@d9 2
+a10 1
+                ge_rand_double()            0 < rand_value < 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 12
+d21 2
+a22 1
+double ge_rand_double();
+@

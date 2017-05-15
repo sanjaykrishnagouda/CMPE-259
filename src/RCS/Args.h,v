@@ -1,0 +1,380 @@
+head	1.4;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.4
+date	2013.06.14.02.50.01;	author kerryveenstra;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2013.03.28.17.00.23;	author kerryveenstra;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2013.03.06.00.43.08;	author kerryveenstra;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2013.03.02.22.27.35;	author kerryveenstra;	state Exp;
+branches;
+next	;
+
+
+desc
+@argument processing
+@
+
+
+1.4
+log
+@improved comments
+@
+text
+@/**************************************************************************
+
+File:           Args.h
+
+Class:          Args
+
+Description:    Record a pointer to the variable that each command-line
+                argument affects and then parse argc and argv.
+
+Methods:        These methods define command-line options:
+
+                Method                      Example Command-Line Option
+                ----------------------      ---------------------------
+                define()                    -p
+                                            -p 1
+                                            -p 1.0
+
+                define_latlon()             -p 1 2
+
+                define_latlon_vector()      -p 1 2  -p 1 2 ...
+
+                define_window()             -p 1 2 3 4
+
+                define()                    -p abc
+
+
+                These remaining methods parse the arguments and deal with
+                the usage string.
+
+                parse()
+                define_usage()
+                print_usage()
+
+**************************************************************************/
+
+
+// Here are the various styles of command-line options
+//
+enum ARG_OPTION_TYPE                    // Example          Variable Type
+{                                       // -----------      -----------------
+    ARG_OPTION_TYPE_BOOL,               // -p               bool var = true
+    ARG_OPTION_TYPE_DOUBLE,             // -p 1.0           double
+    ARG_OPTION_TYPE_INT,                // -p 1             int
+    ARG_OPTION_TYPE_LATLON,             // -p 1 2           vector<ArgLatlon>
+    ARG_OPTION_TYPE_LATLON_VECTOR,      // ( -p 1 2 )+      vector<ArgLatlon>
+    ARG_OPTION_TYPE_STRING,             // -p abc           string
+    ARG_OPTION_TYPE_WINDOW              // -p 1 2 3 4       vector<ArgLatlon>
+};
+
+
+class ArgLatlon
+{
+    public:
+        ArgLatlon(double _lat, double _lon)
+        {
+            lat= _lat;
+            lon= _lon;
+        }
+    public:     // TODO this should be private. Use friends?
+        double lat;
+        double lon;
+};
+
+
+// Each description object records the command-line argument (like "-v") along
+// with a pointer to the variable that records the command-line argument's
+// value.
+//
+// All pointed-to variables are set to initial values.
+//
+class ArgDescription
+{
+    public:
+        ArgDescription(string _dash, double *_p_d)
+        {
+            option_type = ARG_OPTION_TYPE_DOUBLE;
+            dash        = _dash;
+            p_d         = _p_d;
+
+            *p_d        = 0.0;
+        }
+
+        ArgDescription(string _dash, int *_p_i)
+        {
+            option_type = ARG_OPTION_TYPE_INT;
+            dash        = _dash;
+            p_i         = _p_i;
+
+            *p_i        = 0;
+        }
+
+        // _option_type = ARG_OPTION_LATLON, ARG_OPT_LATLON_VECTOR,
+        // or ARG_OPTION_WINDOW.
+        ArgDescription(string _dash,
+                       vector<ArgLatlon> *_p_latlons,
+                       ARG_OPTION_TYPE _option_type)
+        {
+            option_type = _option_type;
+            dash        = _dash;
+            p_latlons   = _p_latlons;
+
+            p_latlons->clear();
+        }
+
+        ArgDescription(string _dash, string *_p_str)
+        {
+            option_type = ARG_OPTION_TYPE_STRING;
+            dash        = _dash;
+            p_str       = _p_str;
+
+            *p_str      = "";
+        }
+
+        ArgDescription(string _dash, bool *_p_b)
+        {
+            option_type = ARG_OPTION_TYPE_BOOL;
+            dash        = _dash;
+            p_b         = _p_b;
+
+            *p_b        = false;
+        }
+
+        void debug_print();
+    public:
+        string                  dash;           // like "-v" or "--output"
+        ARG_OPTION_TYPE         option_type;
+
+        union
+        {
+            double              *p_d;
+            int                 *p_i;
+            vector<ArgLatlon>   *p_latlons;
+            string              *p_str;
+            bool                *p_b;
+        };
+};
+
+
+class Args
+{
+    public:
+        void define(string dash, double *p_d, double val = 0.0)
+        {
+            descriptions.push_back(ArgDescription(dash, p_d));
+            *p_d = val;
+        }
+
+        void define(string dash, int *p_i, int val = 0)
+        {
+            descriptions.push_back(ArgDescription(dash, p_i));
+            *p_i = val;
+        }
+
+        void define_latlon(string dash, vector<ArgLatlon> *p_latlons,
+                           double lat = 0.0, double lon = 0.0)
+        {
+            descriptions.push_back(
+                ArgDescription(dash, p_latlons, ARG_OPTION_TYPE_LATLON)
+            );
+
+            (*p_latlons).push_back(ArgLatlon(lat, lon));
+        }
+
+        void define_latlon_vector(string dash, vector<ArgLatlon> *p_latlons)
+        {
+            descriptions.push_back(
+                ArgDescription(dash, p_latlons, ARG_OPTION_TYPE_LATLON_VECTOR)
+            );
+        }
+
+        void define_window(string dash, vector<ArgLatlon> *p_latlons,
+                           double a = 0.0, double b = 0.0,
+                           double c = 0.0, double d = 0.0)
+        {
+            descriptions.push_back(
+                ArgDescription(dash, p_latlons, ARG_OPTION_TYPE_WINDOW)
+            );
+
+            (*p_latlons).push_back(ArgLatlon(a, b));
+            (*p_latlons).push_back(ArgLatlon(c, d));
+        }
+
+        void define(string dash, string *p_str, string val = "")
+        {
+            descriptions.push_back(ArgDescription(dash, p_str));
+            *p_str = val;
+        }
+
+        void define(string dash, bool *p_b)
+                {descriptions.push_back(ArgDescription(dash, p_b));}
+
+        void define_usage(string _usage) {usage = _usage;}
+        void print_usage() {printf("%s", usage.c_str()); exit(0);}
+        void parse(int argc, char **argv);
+
+        void debug_print()
+             {
+                 printf("ArgDescriptions:\n");
+                 for (auto a : descriptions)
+                 {
+                     a.debug_print();
+                 }
+             }
+    private:
+        vector<ArgDescription>  descriptions;
+        string                  usage;
+};
+
+
+@
+
+
+1.3
+log
+@Changed LATLONS into LATLON and LATLON_VECTOR.
+Added STRING and WINDOW.
+@
+text
+@d1 34
+a34 5
+//  Class:          Args
+//
+//  Description:    Record a pointer to the variable that each command-line
+//                  argument affects and then parse argc and argv.
+//
+@
+
+
+1.2
+log
+@finished coding
+first working version
+@
+text
+@d8 11
+a18 7
+enum ARG_OPTION_TYPE
+{
+    ARG_OPTION_TYPE_DOUBLE,
+    ARG_OPTION_TYPE_INT,
+    ARG_OPTION_TYPE_LATLONS,
+    ARG_OPTION_TYPE_STRING,
+    ARG_OPTION_TYPE_BOOL
+d63 5
+a67 1
+        ArgDescription(string _dash, vector<ArgLatlon> *_p_latlons)
+d69 1
+a69 1
+            option_type = ARG_OPTION_TYPE_LATLONS;
+d96 2
+a97 2
+        string          dash;               // like "-v" or "--output"
+        ARG_OPTION_TYPE option_type;
+d113 48
+a160 9
+        void define(string dash, double *p_d)
+                {descriptions.push_back(ArgDescription(dash, p_d));}
+        void define(string dash, int    *p_i)
+                {descriptions.push_back(ArgDescription(dash, p_i));}
+        void define(string dash, vector<ArgLatlon> *p_latlons)
+                {descriptions.push_back(ArgDescription(dash, p_latlons));}
+        void define(string dash, string *p_str)
+                {descriptions.push_back(ArgDescription(dash, p_str));}
+        void define(string dash, bool   *p_b)
+a161 1
+        void parse(int argc, char **argv);
+d165 1
+d169 1
+a169 1
+                 printf("descriptions:\n");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 2
+a4 3
+//  Description:    Process command-line arguments.
+//
+//  Methods:        TODO
+d12 17
+a28 2
+    ARG_OPTION_TYPE_LATLON,
+    ARG_OPTION_TYPE_STRING
+d32 6
+d41 1
+a41 1
+        ArgDescription(string _str, double *_p_d)
+d44 1
+a44 1
+            dash        = _str;
+d46 2
+d50 1
+a50 1
+        ArgDescription(string _str, int    *_p_i)
+d53 1
+a53 1
+            dash        = _str;
+d55 2
+d59 1
+a59 1
+        ArgDescription(string _str, double *_p_lat, double *_p_lon)
+d61 5
+a65 4
+            option_type     = ARG_OPTION_TYPE_LATLON;
+            dash            = _str;
+            latlon.p_lat    = _p_lat;
+            latlon.p_lon    = _p_lon;
+d68 1
+a68 1
+        ArgDescription(string _str, string *_p_str)
+d71 1
+a71 1
+            dash        = _str;
+d73 11
+d88 1
+a88 1
+        string      dash;    // like "-v" or "--output"
+d93 5
+a97 10
+            double *p_d;
+            int    *p_i;
+
+            struct
+            {
+                double  *p_lat;
+                double  *p_lon;
+            } latlon;
+
+            string *p_str;
+d109 2
+a110 2
+        void define(string dash, double *p_lat, double *p_lon)
+                {descriptions.push_back(ArgDescription(dash, p_lat, p_lon));}
+d113 2
+d123 4
+a126 1
+                 for (auto a : descriptions) a.debug_print();
+@

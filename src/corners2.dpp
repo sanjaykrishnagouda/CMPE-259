@@ -1,0 +1,1 @@
+corners2.o: corners2.cpp data.h
