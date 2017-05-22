@@ -178,7 +178,7 @@ Statistics sa_metropolis_loop
         exploration_region  = Disk(0, 0, INFINITE_RADIUS);
 
         int last = 1; //created this as last index of array of states
-        list
+        int i =0;
 
     do
     {
@@ -191,6 +191,7 @@ Statistics sa_metropolis_loop
                                          use_distributed_algorithm,
                                          k);
 
+        list[i] = S_new;
         int tabu = 0; //for indication whether tabu or not
 
         for (int i=0; i< l; i++)

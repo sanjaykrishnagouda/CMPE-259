@@ -43,8 +43,8 @@ C_FILES = \
 
 
 GENERATED_DATA_FILES = \
-   pahoa-height.bmp \
-ps-real-vrand-s11.bmp \
+   	pahoa-height.bmp \
+	ps-real-vrand-s11.bmp \
     ps-real-vrand-s12.bmp \
     ps-real-vrand-s13.bmp \
     ps-real-vrand-s14.bmp \
@@ -624,7 +624,7 @@ all : $(EXECUTABLES) $(GENERATED_DATA_FILES)
 
 .PHONY: clean
 clean:
-	rm -f *.o *.d $(EXECUTABLES) 
+	rm -f *.o *.d $(EXECUTABLES)
 
 
 # Object files of each executable:
@@ -664,17 +664,17 @@ include $(subst .c,.d,$(C_FILES))
 	rm -f $@.$$$$
 
 # elevation data files
-HGT     = ../Data/SRTM_1_Arc_Second/N37W123.hgt 
-REAL    = ../Data/SRTM_1_Arc_Second/N37W123.hgt 
-FLAT    = ../Data/SRTM_1_Arc_Second/flat.hgt 
-DISH    = ../Data/SRTM_1_Arc_Second/dish.hgt 
-WAVY    = ../Data/SRTM_1_Arc_Second/wavy.hgt 
-WAVY2   = ../Data/SRTM_1_Arc_Second/wavy2.hgt 
-BRC     = ../Data/SRTM_1_Arc_Second/N40W120.hgt 
-MAUI_NW = ../Data/SRTM_1_Arc_Second/N21W157.hgt 
-MAUI_SE = ../Data/SRTM_1_Arc_Second/N20W156.hgt 
-MAUI_SW = ../Data/SRTM_1_Arc_Second/N20W157.hgt 
-PAHOA   = ../Data/SRTM_1_Arc_Second/N19W155.hgt 
+HGT     = ../Data/SRTM_1_Arc_Second/N37W123.hgt
+REAL    = ../Data/SRTM_1_Arc_Second/N37W123.hgt
+FLAT    = ../Data/SRTM_1_Arc_Second/flat.hgt
+DISH    = ../Data/SRTM_1_Arc_Second/dish.hgt
+WAVY    = ../Data/SRTM_1_Arc_Second/wavy.hgt
+WAVY2   = ../Data/SRTM_1_Arc_Second/wavy2.hgt
+BRC     = ../Data/SRTM_1_Arc_Second/N40W120.hgt
+MAUI_NW = ../Data/SRTM_1_Arc_Second/N21W157.hgt
+MAUI_SE = ../Data/SRTM_1_Arc_Second/N20W156.hgt
+MAUI_SW = ../Data/SRTM_1_Arc_Second/N20W157.hgt
+PAHOA   = ../Data/SRTM_1_Arc_Second/N19W155.hgt
 
 WIN_480x360  = 37.1 -122.2 37.2 -122.0666666666667
 WIN_480x360A = 37.1 -122.0666666666667 37.2 -121.9333333333333
@@ -742,7 +742,7 @@ VP_240x180B_10 = 37.11 -122.078 \
 
 # ALREADY UPDATED
 braemoor-viewshed-2.bmp : visibility
-	./visibility -hgt $(HGT) -hgt-latlon 37 -123 -w $(WIN_480x360) -v -122.1489 37.1158 -v -122.19 37.11 -V -bmp $@ 
+	./visibility -hgt $(HGT) -hgt-latlon 37 -123 -w $(WIN_480x360) -v -122.1489 37.1158 -v -122.19 37.11 -V -bmp $@
 
 
 # First example of a gradient ascent algorithm going the wrong
@@ -4001,7 +4001,7 @@ dsa-real-cr-150-er-50-s-10.bmp : visibility
 # Pattern search
 # ALREADY UPDATED
 braemoor-pattern-search-limited-100-pts-sequential-100.txt : visibility
-	./visibility -hgt $(HGT) -hgt-latlon 37 -123 -w $(WIN_480x360) -r 100 -G 4 -v $(VIEWPOINTS_10) -t 100 -bmp $@ 
+	./visibility -hgt $(HGT) -hgt-latlon 37 -123 -w $(WIN_480x360) -r 100 -G 4 -v $(VIEWPOINTS_10) -t 100 -bmp $@
 
 braemoor-pattern-search-s1.bmp : visibility
 	./visibility -hgt $(HGT) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -G 4 -bmp $@ -txt $(basename $@).txt -vrand 10 -t 100 -delta 64 -s 1
@@ -6142,7 +6142,3 @@ dish-sa-16C-dist.bmp : visibility
 
 dish-sa-16D-dist.bmp : visibility
 	./visibility -hgt $(DISH) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -v $(VP_240x180A_10) -t 100000 -T 100 -M 50 -l 0.7 -d 35 -Sd -er 35 -cr 170 -s 4
-
-
-
-
