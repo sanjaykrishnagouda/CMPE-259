@@ -1,10 +1,7 @@
 <<<<<<< HEAD
 /******************************************************************************
 
-File:       sa.cpp
-Purpose:    Simulated Annealing algorithm
-Author:     Kerry Veenstra
-=======
+
 /*
 File:       ts.cpp
 Purpose:    Tabu Search algorithm
@@ -46,6 +43,7 @@ extern "C"
 extern "C"
 {
 #include "ts.h"
+#include "sa.h"
 }
 
 
@@ -113,43 +111,9 @@ use the dynamic temperature and Markov-chain length adjuster from Section
 
 
 ----------------
-Cooling Schedule
+Tabu List
 ----------------
 
-We use the cooling schedule by Huang, Romeo, and Sangiovanni-Vincentelli
-[2].  This schedule  ensures that the simulated-annealing algorithm's
-execution time is reasonable.  Its operation is described below:
-
-1.  Set T based on the standard deviation of the cost function, sigma.  The
-    idea is to set T so that the system is 90% likely to accept a
-    configuration that is 3 sigma worse.
-
-    prob_of_accepting_three_sigma_worse_cost = 0.9
-    k = -3 / ln(prob_of_accepting_three_sigma_worse_cost)
-    T = k * sigma
-
-2.  At each step, decrease T such that the cost decreases by an amount that
-    is less than the cost's standard deviation. Sait and Youssef [1]
-    justify the equation below. The value of lambda * sigma is the target
-    reduction in cost.
-
-    lambda = 0.7
-    T = T * exp(-lambda * T / sigma)
-
-3.  At some point, . . . (check reference).
-
-
-----------
-References
-----------
-
-[1] Sait and Youssef. Iterative Computer Algorithms with Applications in
-    Engineering: Solving Combinatorial Optimization Problems. ISBN
-    0-7695-0100-1.
-
-[2] Huang, Romeo, and Sangiovanni-Vincentelli.  "An Efficient General
-    Cooling Schedule for Simulated Annealing," IEEE Trans.  Comp. Aided
-    Des.  pp. 381-384. 1986.
 
 ******************************************************************************/
 
@@ -236,7 +200,7 @@ void sa_communicate_locations
     }
 }
 
-
+/*
 //  Function:       sa_metropolis_loop
 //
 //  Description:    Inner loop of a Simulated Annealing algorithm.
@@ -309,7 +273,7 @@ Statistics sa_metropolis_loop
                                      S_new.pi, S_new.pj, S_new.pcommunicating,
                                      sensor_radius_max,
                                      viewpoint_height_above_terrain);
-
+*/
             //int delta_utility   = utility_new - utility;
 
             if (utility_new > utility ||
@@ -701,5 +665,7 @@ extern "C" int sa_simulated_annealing
         );
     }
 }
+int ts_tabu_search()
+{}
 =======
 >>>>>>> 01cabb93c0e2e2dc8207067badf1a18c3b59eaff
