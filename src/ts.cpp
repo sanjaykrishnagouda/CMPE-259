@@ -213,6 +213,7 @@ void sa_communicate_locations
 //                  Solving Combinatorial Optimization Problems", ISBN
 //                  0-7695-0100-1.
 //
+*/
 Statistics sa_metropolis_loop
 (
     State  &S,
@@ -232,7 +233,7 @@ Statistics sa_metropolis_loop
     Disk        exploration_region;
     int         k;
     Statistics  stats_utility;
-
+	
 
         // Select random agent.
         k                   = ge_rand_uniform_int(0, S.num_viewpoints - 1);
@@ -240,6 +241,11 @@ Statistics sa_metropolis_loop
 
         int last = 1; //created this as last index of array of states
         int i =0;
+
+      
+       // Add the initial S into the tabu_list
+
+
 
     do
     {
@@ -252,18 +258,36 @@ Statistics sa_metropolis_loop
                                          use_distributed_algorithm,
                                          k);
 
-        list[i] = S_new;
-        int tabu = 0; //for indication whether tabu or not
+        
+        bool tabu; //for indication whether tabu or not
 
-        for (int i=0; i< l; i++)
-        {
-            if list[i] == S_new
-            tabu = 1;
+        //checking if S_new exists in tabu list
+        for(int i=0 : tabu_list){
+
+        	//if (make_pair(S_new.pi,S_new.pj)==tabu_list<(i.first,i.second)>)
+        	if (S_new.pi==i.first && S_new.pj==i.second){
+        		tabu = true; 
+        		break;
+        	}
+        	else tabu = false;
+        		      	
         }
 
-        if (tabu == 1)
+        if (tabu==true)
         {
-            //write aspiration criteria
+        	int utility_tabu     = cvis_wang_malloc_count(&v, &z, srtm,
+                                     S_new.num_viewpoints,
+                                     S_new.pi, S_new.pj, S_new.pcommunicating,
+                                     sensor_radius_max,
+                                     viewpoint_height_above_terrain);
+
+        	if (utility_tabu > utility_best)
+            {
+                S_best       = S_new;
+                utility_best = utility_new;
+            }
+        	goto l1;
+        	//AC checking to be done here
         }
         else
         {
@@ -273,7 +297,7 @@ Statistics sa_metropolis_loop
                                      S_new.pi, S_new.pj, S_new.pcommunicating,
                                      sensor_radius_max,
                                      viewpoint_height_above_terrain);
-*/
+
             //int delta_utility   = utility_new - utility;
 
             if (utility_new > utility ||
@@ -300,7 +324,7 @@ Statistics sa_metropolis_loop
         }
 
 
-        M = M - 1;
+    l1:    M = M - 1;
     } while (M > 0);
 
     return stats_utility;
@@ -340,6 +364,11 @@ int sa_simulated_annealing_centralized
     int     time_max
 )
 {
+    //intializing the tabu list
+    vector<pair<int,int>> tabu_list;
+    tabu_list.pushback(make_pair(S.pi,S.pj)); //adding initial states to the tabu list
+
+
     const int k = 20;   // Recommended value from reference.
 
     printf("temp_initial = %d\n", temp_initial);
@@ -368,6 +397,7 @@ int sa_simulated_annealing_centralized
     // Determine an initial temperature that is based on sigma.
 
     Temperature T(INFINITE_TEMPERATURE);   // Accept all generated states.
+
 
     Statistics stats_utility =
         sa_metropolis_loop(S, utility, S_best, utility_best,
