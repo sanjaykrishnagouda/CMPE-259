@@ -40,46 +40,20 @@ C_FILES = \
     ucsclim.cpp \
     visibility.cpp \
     voids.cpp \
+		ts.cpp \
 
 
 GENERATED_DATA_FILES = \
    	pahoa-height.bmp \
-	ps-real-vrand-s11.bmp \
-    ps-real-vrand-s12.bmp \
-    ps-real-vrand-s13.bmp \
-    ps-real-vrand-s14.bmp \
-    ps-real-vrand-s15.bmp \
-    ps-real-vrand-s16.bmp \
-    ps-real-vrand-s17.bmp \
-    ps-real-vrand-s18.bmp \
-    ps-real-vrand-s19.bmp \
-    ps-real-vrand-s20.bmp \
-    ps-flat-vrand-s11.bmp \
-    ps-flat-vrand-s12.bmp \
-    ps-flat-vrand-s13.bmp \
-    ps-flat-vrand-s14.bmp \
-    ps-flat-vrand-s15.bmp \
-    ps-flat-vrand-s16.bmp \
-    ps-flat-vrand-s17.bmp \
-    ps-flat-vrand-s18.bmp \
-    ps-flat-vrand-s19.bmp \
-    ps-flat-vrand-s20.bmp \
-    ps-dish-vrand-s11.bmp \
-    ps-dish-vrand-s12.bmp \
-    ps-dish-vrand-s13.bmp \
-    ps-dish-vrand-s14.bmp \
-    ps-dish-vrand-s15.bmp \
-    ps-dish-vrand-s16.bmp \
-    ps-dish-vrand-s17.bmp \
-    ps-dish-vrand-s18.bmp \
-    ps-dish-vrand-s19.bmp \
-    ps-dish-vrand-s20.bmp \
-    ps-wavy-vrand-s11.bmp \
-    ps-wavy-vrand-s12.bmp \
-    ps-wavy-vrand-s13.bmp \
-    ps-wavy-vrand-s14.bmp \
-    ps-wavy-vrand-s15.bmp \
-    ps-wavy-vrand-s16.bmp \
+		sa-real30-s-1.bmp \
+		sa-real30-s-2.bmp \
+		sa-real30-s-3.bmp \
+		sa-real30-s-4.bmp \
+	#    ps-wavy-vrand-s12.bmp \
+#    ps-wavy-vrand-s13.bmp \
+#    ps-wavy-vrand-s14.bmp \
+#    ps-wavy-vrand-s15.bmp \
+#    ps-wavy-vrand-s16.bmp \
 #    ps-wavy-vrand-s17.bmp \
 #    ps-wavy-vrand-s18.bmp \
 #    ps-wavy-vrand-s19.bmp \
@@ -404,10 +378,7 @@ GENERATED_DATA_FILES = \
 #    dsa-real30-cr-120-s-8.bmp \
 #    dsa-real30-cr-120-s-9.bmp \
 #    dsa-real30-cr-120-s-10.bmp \
-#    sa-real30-s-1.bmp \
-#    sa-real30-s-2.bmp \
-#    sa-real30-s-3.bmp \
-#    sa-real30-s-4.bmp \
+
 #    sa-real30-s-5.bmp \
 #    sa-real30-s-6.bmp \
 #    sa-real30-s-7.bmp \
@@ -638,7 +609,7 @@ mk_dish_srtm : mk_dish_srtm.o
 mk_wavy_srtm : mk_wavy_srtm.o
 mk_wavy2_srtm : mk_wavy2_srtm.o
 
-visibility  : visibility.o srtm.o cvis_wang.o bmp.o msg.o grd.o pg.o sa.o \
+visibility  : visibility.o srtm.o cvis_wang.o bmp.o msg.o grd.o pg.o ts.o sa.o \
               State.o Statistics.o Temperature.o ge.o Args.o Disk.o
 
 
@@ -1350,22 +1321,22 @@ sa-real20-s-10.bmp : visibility
 # sa-real30
 
 sa-real30-s-1.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 1
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 1
 
 sa-real30-s-2.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 2
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 2
 
 sa-real30-s-3.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 3
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 3
 
 sa-real30-s-4.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 4
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 4
 
 sa-real30-s-5.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 5
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 5
 
 sa-real30-s-6.bmp : visibility
-	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 6
+	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -TS -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 6
 
 sa-real30-s-7.bmp : visibility
 	./visibility -hgt $(REAL) -hgt-latlon 37 -123 -w $(WIN_240x180A) -r 50 -S -bmp $@ -txt $(basename $@).txt -vrand 30 -t 100000 -T 100 -M 500 -l 0.7 -d 50 -s 7

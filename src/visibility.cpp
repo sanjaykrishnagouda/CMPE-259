@@ -153,6 +153,7 @@ int main(int argc, char **argv)
     vector<ArgLatlon>   window;
     bool                optimize_pg;
     bool                optimize_sa;
+    bool                optimize_ts;
     int                 temp_initial;
     int                 M_initial;
     int                 dist_max;
@@ -180,6 +181,7 @@ int main(int argc, char **argv)
     args.define_window("-w", &window,       -90.01, -180.01, 90.01, 180.01);
     args.define("-P", &optimize_pg);
     args.define("-S", &optimize_sa);
+    args.define("-TS", &optimize_ts);
     args.define("-T", &temp_initial);
     args.define("-t", &num_iterations);
     args.define("-M", &M_initial,           10);
@@ -480,8 +482,39 @@ printf("begin main()\n");
                         cumulative_visibility);
     }
 
+    if (optimize_ts)
+    {
+        State S = State(num_viewpoints, viewpoint_i, viewpoint_j);
+
+        cumulative_visibility =
+            ts_simulated_annealing(temp_initial,
+                                   S,
+                                   radius_max,
+                                   viewpoint_height_above_terrain,
+                                   dist_max,
+                                   exploration_radius_max,
+                                   communication_radius_max,
+                                   alpha,
+                                   beta,
+                                   lambda,
+                                   M_initial,
+                                   num_iterations,
+                                   use_distributed_algorithm,
+                                   bmp_sequence_basename.c_str());
+
+        printf("write %s\n", filename_bmp.c_str());
+        bmp_srtm_v_write(srtm, v->visible,
+            filename_bmp.c_str(),
+            S.num_viewpoints, S.pi, S.pj);
+
+        printf("cumulative visibility = %d\n", cumulative_visibility);
+
+        create_txt_file(filename_txt,
+                        "cumulative visibility = %d\n",
+                        cumulative_visibility);
+    }
+
     cleanup();
 printf("end main()\n");
     return 0;
 }
-

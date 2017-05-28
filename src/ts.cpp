@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 /******************************************************************************
 
 
@@ -12,110 +12,9 @@ Author:     Naishil Shah
 -------------------
 Simulated Annealing
 -------------------
-We retain some of the functions in the Simulate Annealing (sa.cpp and sa.h) algorithm by Keery Veenstra.
-
+We retain some of the functions in the Simulate Annealing (sa.cpp and sa.h) algorithm by Keery Veenstra
 
 */
-
-
-#include <limits>
-#include <vector>
-
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-extern "C"
-{
-#include "srtm.h"
-#include "cvis_wang.h"
-#include "bmp.h"
-#include "visibility.h"
-}
-
-#include "ge.h"
-#include "Disk.h"
-#include "State.h"
-#include "Statistics.h"
-#include "Temperature.h"
-#include "Agent.h"
-
-extern "C"
-{
-#include "ts.h"
-#include "sa.h"
-}
-
-
-// Merge agents' states with other agents that are in
-// communication range.  We're going to use a simple
-// O(n^2) algorithm.
-
-// Agent x stores its own state in the x'th position
-// of its state vector.  We copy this information to the
-// x'th position of other agents that are in communication
-// range.
-void sa_communicate_locations
-(
-    std::vector<Agent> &agents,
-    int                 communication_radius_max
-)
-{
-    int a_index = 0;
-
-    for (auto &a : agents)
-    {
-        int b_index = 0;
-
-        for (auto &b : agents)
-        {
-            if (a_index != b_index)
-            {
-                printf("%2d %2d :", a_index, b_index);
-
-                // Is agent b close to agent a?
-                double di = b.S.pi[b_index] - a.S.pi[a_index];
-                double dj = b.S.pj[b_index] - a.S.pj[a_index];
-                int distance = (int) sqrt(di * di + dj * dj);
-
-                if (distance > communication_radius_max)
-                {
-                    b.S.pcommunicating[a_index] = false;
-                }
-                else
-                {
-                    b.S.pcommunicating[a_index] = true;
-
-                    // Copy agent a's position to agent b.
-                    printf(" copy position");
-                    b.S.pi[a_index] = a.S.pi[a_index];
-                    b.S.pj[a_index] = a.S.pj[a_index];
-                }
-
-                printf("\n");
-            }
-
-            ++b_index;
-        }
-
-        ++a_index;
-    }
-}
-
-<<<<<<< HEAD
-We use the Simulated Annealing Algorithm as described in Chapter 2 of Sait
-and Youssef [1].  We follow the algorithm listing on p. 54 directly, except
-for the cooling schedule.  Instead of using the simple cooling schedule, we
-use the dynamic temperature and Markov-chain length adjuster from Section
-2.4.3.
-
-
-----------------
-Tabu List
-----------------
-
-
-******************************************************************************/
 
 #include <limits>
 #include <vector>
@@ -214,7 +113,7 @@ void sa_communicate_locations
 //                  0-7695-0100-1.
 //
 */
-Statistics sa_metropolis_loop
+Statistics ts_metropolis_loop
 (
     State  &S,
     int    &utility,
@@ -233,7 +132,7 @@ Statistics sa_metropolis_loop
     Disk        exploration_region;
     int         k;
     Statistics  stats_utility;
-	
+
 
         // Select random agent.
         k                   = ge_rand_uniform_int(0, S.num_viewpoints - 1);
@@ -242,7 +141,7 @@ Statistics sa_metropolis_loop
         int last = 1; //created this as last index of array of states
         int i =0;
 
-      
+
        // Add the initial S into the tabu_list
 
 
@@ -258,7 +157,7 @@ Statistics sa_metropolis_loop
                                          use_distributed_algorithm,
                                          k);
 
-        
+
         bool tabu; //for indication whether tabu or not
 
         //checking if S_new exists in tabu list
@@ -266,11 +165,11 @@ Statistics sa_metropolis_loop
 
         	//if (make_pair(S_new.pi,S_new.pj)==tabu_list<(i.first,i.second)>)
         	if (S_new.pi==i.first && S_new.pj==i.second){
-        		tabu = true; 
+        		tabu = true;
         		break;
         	}
         	else tabu = false;
-        		      	
+
         }
 
         if (tabu==true)
@@ -348,7 +247,7 @@ Purpose:    Evolve the positions of several viewpoints by simulated
 
 Returns:    Utility of final configuration.
 **************************************************************************/
-int sa_simulated_annealing_centralized
+int ts_centralized
 (
     int     temp_initial,
     State  &S,                          // initial state (initial viewpoints)
@@ -400,7 +299,7 @@ int sa_simulated_annealing_centralized
 
 
     Statistics stats_utility =
-        sa_metropolis_loop(S, utility, S_best, utility_best,
+        ts_metropolis_loop(S, utility, S_best, utility_best,
                            T.current(), (int) num_cycles_at_temp,
                            sensor_radius_max, viewpoint_height_above_terrain,
                            jump_radius_max,
@@ -413,7 +312,7 @@ int sa_simulated_annealing_centralized
 
     do
     {
-        stats_utility = sa_metropolis_loop(S, utility, S_best, utility_best,
+        stats_utility = ts_metropolis_loop(S, utility, S_best, utility_best,
                            T.current(), (int) num_cycles_at_temp,
                            sensor_radius_max, viewpoint_height_above_terrain,
                            jump_radius_max,
@@ -437,7 +336,6 @@ int sa_simulated_annealing_centralized
 
     return utility;
 }
-
 
 /**************************************************************************
 Purpose:    Evolve the positions of several viewpoints by simulated
@@ -656,7 +554,8 @@ Purpose:    Evolve the positions of several viewpoints by simulated
 
 Returns:    Utility of final configuration.
 **************************************************************************/
-extern "C" int sa_simulated_annealing
+
+extern "C" int ts_simulated_annealing
 (
     int     temp_initial,
     State  &S,                          // initial state (initial viewpoints)
@@ -674,7 +573,7 @@ extern "C" int sa_simulated_annealing
     const char *bmp_sequence_basename
 )
 {
-    if (use_distributed_algorithm)
+    /*if (use_distributed_algorithm)
     {
         return sa_simulated_annealing_distributed
         (
@@ -685,8 +584,8 @@ extern "C" int sa_simulated_annealing
         );
     }
     else
-    {
-        return sa_simulated_annealing_centralized
+    {*/
+        return ts_centralized
         (
             temp_initial, S, sensor_radius_max,
             viewpoint_height_above_terrain, jump_radius_max,
@@ -695,7 +594,3 @@ extern "C" int sa_simulated_annealing
         );
     }
 }
-int ts_tabu_search()
-{}
-=======
->>>>>>> 01cabb93c0e2e2dc8207067badf1a18c3b59eaff
