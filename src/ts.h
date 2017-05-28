@@ -14,13 +14,13 @@ Tabu Search
 //  Description:    Simulated Annealing Algorithm
 //
 
-//#define INFINITE_TEMPERATURE    999999
+#define INFINITE_TEMPERATURE    999999
 #define INFINITE_RADIUS         999999
 
 
-int ts_tabu_search
+int ts_simulated_annealing
 (
-    int     aspiration_initial,
+    int     temp_initial,
     State  &S,                          // initial state (initial viewpoints)
     int     sensor_radius_max,
     int     viewpoint_height_above_terrain,
