@@ -158,14 +158,22 @@ Statistics ts_metropolis_loop
     int         k;
     Statistics  stats_utility;
 
-
-        // Select random agent.
-        k                   = ge_rand_uniform_int(0, S.num_viewpoints - 1);
+    	if (use_distributed_algorithm)
+    {
+        // Select specified agent.
+        k                   = forced_k;
+        exploration_region  = Disk(S.pi[k], S.pj[k], exploration_radius_max);
+    }
+        
+    else
+    {	
+    	// Select random agent.
+    	k                   = ge_rand_uniform_int(0, S.num_viewpoints - 1);
         exploration_region  = Disk(0, 0, INFINITE_RADIUS);
 
         int last = 1; //created this as last index of array of states
         int i =0;
-
+    }
 
 
 
@@ -184,7 +192,7 @@ Statistics ts_metropolis_loop
 
         bool tabu; //for indication whether tabu or not
 		int count=1;
-
+		int i=0;	
 	//  C H E C K I N G I F T H E N O D E W A S V I S I T E D
         for(i=0; i<=sizeof(tabu_list_i)/sizeof(int);++i){
         	if((tabu_list_i[i]==*S_new.pi) && (tabu_list_j[i]==*S_new.pj)){
@@ -338,7 +346,7 @@ int ts_centralized
     
 
 
-    const int k = 2;        
+    const int k = 20;        
 
 
     printf("temp_initial = %d\n", temp_initial);
@@ -415,6 +423,172 @@ int ts_centralized
     return utility;
 }
 
+int ts_simulated_annealing_distributed
+(
+    int     temp_initial,
+    State  &S,                          // initial state (initial viewpoints)
+    int     sensor_radius_max,
+    int     viewpoint_height_above_terrain,
+    int     jump_radius_max,
+    int     exploration_radius_max,
+    int     communication_radius_max,
+    double  alpha,
+    double  beta,
+    double  lambda,
+    int     M_initial,
+    int     time_max
+)
+{
+    const int k = 20;   // Recommended value from reference.
+
+    printf("temp_initial = %d\n", temp_initial);
+    printf("sensor_radius_max = %d\n", sensor_radius_max);
+    printf("jump_radius_max = %d\n", jump_radius_max);
+    printf("exploration_radius_max = %d\n", exploration_radius_max);
+    printf("alpha = %f\n", alpha);
+    printf("beta = %f\n", beta);
+    printf("M_initial = %d\n", M_initial);
+    printf("time_max = %d\n", time_max);
+
+    int utility;
+    int utility_best;
+
+    int time = 0;
+
+
+    // Create an agent for each viewpoint.
+    std::vector<Agent> agents;
+
+    for (int i = 0; i < S.num_viewpoints; ++i)
+    {
+        agents.push_back(Agent(S, INFINITE_TEMPERATURE));
+    }
+
+    sa_communicate_locations(agents, communication_radius_max);
+
+
+    // For each agent, determine an initial temperature that is based
+    // on sigma.
+    int a_index = 0;
+
+    for (auto &a : agents)
+    {
+        utility = cvis_wang_malloc_count(&v, &z, srtm,
+                          a.S.num_viewpoints, a.S.pi, a.S.pj,
+                          a.S.pcommunicating,
+                          sensor_radius_max,
+                          viewpoint_height_above_terrain);
+
+        printf("agent = %d, utility = %d\n", a_index, utility);
+
+        a.S_best              = a.S;
+        a.utility_best        = utility;
+        a.num_cycles_at_temp  = M_initial;
+
+        // Accept all generated states.
+        a.T = Temperature(INFINITE_TEMPERATURE);
+
+        a.stats_utility =
+            ts_metropolis_loop(a.S,
+                               utility,
+                               a.S_best,
+                               a.utility_best,
+                               a.T.current(),
+                               (int) a.num_cycles_at_temp,
+                               sensor_radius_max,
+                               viewpoint_height_above_terrain,
+                               jump_radius_max,
+                               exploration_radius_max,
+                               true,    // use_distributed_algorithm
+                               a_index);
+
+        // Compute an initial temperature.
+        a.T = Temperature(k * a.stats_utility.standard_deviation());
+
+        ++a_index;
+    }
+
+
+    //
+    // Now anneal.
+    //
+
+    do
+    {
+        // Anneal each agent for *one* Metropolis loop.
+        a_index = 0;
+
+        for (auto &a : agents)
+        {
+            a.stats_utility = ts_metropolis_loop(a.S,
+                                  utility,
+                                  a.S_best,
+                                  a.utility_best,
+                                  a.T.current(),
+                                  (int) a.num_cycles_at_temp,
+                                  sensor_radius_max,
+                                  viewpoint_height_above_terrain,
+                                  jump_radius_max,
+                                  exploration_radius_max,
+                                  true,    // use_distributed_algorithm
+                                  a_index);
+
+            a.time                  += a.num_cycles_at_temp;
+            a.num_cycles_at_temp    *= beta;
+
+            ++a_index;
+        }
+
+
+        // Agents have moved.
+        sa_communicate_locations(agents, communication_radius_max);
+
+
+        // Merge all of the agents' S's into S.
+        a_index = 0;
+
+        for (auto &a : agents)
+        {
+            S.pi[a_index] = a.S.pi[a_index];
+            S.pj[a_index] = a.S.pj[a_index];
+
+            ++a_index;
+        }
+
+
+        // Compute the utility of the merged state.
+        utility_best = cvis_wang_malloc_count(&v, &z, srtm,
+                            S.num_viewpoints, S.pi, S.pj, S.pcommunicating,
+                            sensor_radius_max,
+                            viewpoint_height_above_terrain);
+
+
+        // Terminate loop if all agents are frozen.
+        bool all_agents_are_frozen = true;
+
+        for (auto &a : agents)
+        {
+            if (a.T.current() > 0.0) all_agents_are_frozen = false;
+        }
+
+        if (all_agents_are_frozen) break;
+
+
+        // Compute agents' next temperatures and advance global time.
+        for (auto &a : agents)
+        {
+            a.T.next_huang(lambda, a.stats_utility);
+
+            if (time < a.time)
+            {
+                time = a.time;
+            }
+        }
+
+    } while (time < time_max);
+
+    return utility_best;
+}
 
 
 /**************************************************************************
@@ -464,9 +638,9 @@ extern "C" int ts_simulated_annealing
     const char *bmp_sequence_basename
 )
 {
-    /*if (use_distributed_algorithm)
+    if (use_distributed_algorithm)
     {
-        return sa_simulated_annealing_distributed
+        return ts_simulated_annealing_distributed
         (
             temp_initial, S, sensor_radius_max,
             viewpoint_height_above_terrain, jump_radius_max,
@@ -475,7 +649,7 @@ extern "C" int ts_simulated_annealing
         );
     }
     else
-    {*/
+    {
         return ts_centralized
         (
             temp_initial, S, sensor_radius_max,
@@ -484,3 +658,4 @@ extern "C" int ts_simulated_annealing
             alpha, beta, lambda, M_initial, time_max
         );
     }
+}
